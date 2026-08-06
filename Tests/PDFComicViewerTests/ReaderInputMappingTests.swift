@@ -3,6 +3,43 @@ import XCTest
 @testable import PDFComicViewer
 
 final class ReaderInputMappingTests: XCTestCase {
+    func testReaderKeysAreHandledWhenCanvasHasKeyboardFocus() {
+        XCTAssertTrue(
+            ReaderInputMapping.shouldHandleReaderKey(
+                readerIsEnabled: true,
+                textIsEditing: false,
+                controlHasFocus: false
+            )
+        )
+    }
+
+    func testReaderKeysPassThroughWhenOperationControlHasKeyboardFocus() {
+        XCTAssertFalse(
+            ReaderInputMapping.shouldHandleReaderKey(
+                readerIsEnabled: true,
+                textIsEditing: false,
+                controlHasFocus: true
+            )
+        )
+    }
+
+    func testReaderKeysPassThroughWhileEditingTextOrShowingModalState() {
+        XCTAssertFalse(
+            ReaderInputMapping.shouldHandleReaderKey(
+                readerIsEnabled: true,
+                textIsEditing: true,
+                controlHasFocus: false
+            )
+        )
+        XCTAssertFalse(
+            ReaderInputMapping.shouldHandleReaderKey(
+                readerIsEnabled: false,
+                textIsEditing: false,
+                controlHasFocus: false
+            )
+        )
+    }
+
     func testRightBindingMapsLeftArrowToNextAndRightArrowToPrevious() {
         XCTAssertEqual(
             ReaderInputMapping.action(for: .leftArrow, binding: .right),

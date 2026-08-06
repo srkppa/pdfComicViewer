@@ -11,6 +11,7 @@ struct ReaderView: View {
     @State private var isDropTargeted = false
     @State private var isFullScreen = false
     @State private var controlsVisible = true
+    @State private var toolbarControlHasKeyboardFocus = false
     @State private var contextPageIndex: Int?
     @State private var hideControlsTask: Task<Void, Never>?
 
@@ -30,7 +31,12 @@ struct ReaderView: View {
 
             if isFullScreen, controlsVisible {
                 VStack {
-                    ReaderToolbar(model: model)
+                    ReaderToolbar(
+                        model: model,
+                        keyboardFocusChange: { focused in
+                            toolbarControlHasKeyboardFocus = focused
+                        }
+                    )
                         .padding(.top, 12)
                     Spacer()
                 }
@@ -46,7 +52,12 @@ struct ReaderView: View {
         .toolbar {
             if !isFullScreen {
                 ToolbarItem(placement: .principal) {
-                    ReaderToolbar(model: model)
+                    ReaderToolbar(
+                        model: model,
+                        keyboardFocusChange: { focused in
+                            toolbarControlHasKeyboardFocus = focused
+                        }
+                    )
                 }
             }
         }
@@ -138,6 +149,7 @@ struct ReaderView: View {
                     && model.passwordRequest == nil
                     && model.replacementConfirmation == nil
                     && model.errorMessage == nil,
+                controlHasKeyboardFocus: toolbarControlHasKeyboardFocus,
                 excludedTopHeight: isFullScreen && controlsVisible ? 64 : 0,
                 excludedBottomHeight: model.warningMessage == nil ? 0 : 52,
                 fullScreenRequestSequence: model.fullScreenRequestSequence,

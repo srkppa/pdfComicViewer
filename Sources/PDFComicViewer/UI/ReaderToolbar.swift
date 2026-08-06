@@ -37,6 +37,17 @@ enum ReaderTheme {
 @MainActor
 struct ReaderToolbar: View {
     @ObservedObject var model: ReaderViewModel
+    @FocusState private var focusedControl: FocusedReaderControl?
+
+    let keyboardFocusChange: (Bool) -> Void
+
+    init(
+        model: ReaderViewModel,
+        keyboardFocusChange: @escaping (Bool) -> Void = { _ in }
+    ) {
+        self.model = model
+        self.keyboardFocusChange = keyboardFocusChange
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -45,11 +56,13 @@ struct ReaderToolbar: View {
                 systemImage: "doc.badge.plus",
                 action: model.requestFileOpen
             )
+            .focused($focusedControl, equals: .open)
 
             Divider().frame(height: 20)
 
             BindingDirectionButton(model: model)
                 .disabled(model.session == nil)
+                .focused($focusedControl, equals: .binding)
 
             Picker(
                 "表示方法",
@@ -66,6 +79,7 @@ struct ReaderToolbar: View {
             .accessibilityLabel("ページの表示方法")
             .help("1ページ表示と見開き表示を切り替えます")
             .disabled(model.session == nil)
+            .focused($focusedControl, equals: .displayMode)
 
             iconButton(
                 "見開き位置を1ページずらす",
@@ -73,15 +87,19 @@ struct ReaderToolbar: View {
                 action: model.toggleAlignment
             )
             .disabled(model.session == nil || model.preferences.displayMode == .single)
+            .focused($focusedControl, equals: .alignment)
 
             Divider().frame(height: 20)
 
             iconButton("縮小", systemImage: "minus.magnifyingglass", action: model.zoomOut)
                 .disabled(model.session == nil)
+                .focused($focusedControl, equals: .zoomOut)
             iconButton("ウインドウに合わせる", systemImage: "arrow.down.right.and.arrow.up.left", action: model.fitToWindow)
                 .disabled(model.session == nil)
+                .focused($focusedControl, equals: .fit)
             iconButton("拡大", systemImage: "plus.magnifyingglass", action: model.zoomIn)
                 .disabled(model.session == nil)
+                .focused($focusedControl, equals: .zoomIn)
 
             Text(pageCounterText)
                 .font(.system(.body, design: .monospaced))
@@ -97,6 +115,7 @@ struct ReaderToolbar: View {
                 systemImage: "arrow.up.left.and.arrow.down.right",
                 action: model.requestFullScreenToggle
             )
+            .focused($focusedControl, equals: .fullScreen)
         }
         .font(.system(size: 13, weight: .medium))
         .foregroundStyle(ReaderTheme.primaryText)
@@ -106,6 +125,12 @@ struct ReaderToolbar: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(ReaderTheme.border.opacity(0.8), lineWidth: 1)
+        }
+        .onChange(of: focusedControl, initial: true) { _, control in
+            keyboardFocusChange(control != nil)
+        }
+        .onDisappear {
+            keyboardFocusChange(false)
         }
     }
 
@@ -129,6 +154,17 @@ struct ReaderToolbar: View {
         .accessibilityLabel(title)
         .help(title)
     }
+}
+
+private enum FocusedReaderControl: Hashable {
+    case open
+    case binding
+    case displayMode
+    case alignment
+    case zoomOut
+    case fit
+    case zoomIn
+    case fullScreen
 }
 
 @MainActor

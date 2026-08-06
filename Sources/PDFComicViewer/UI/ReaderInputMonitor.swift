@@ -19,6 +19,14 @@ enum ReaderInputAction: Equatable {
 }
 
 enum ReaderInputMapping {
+    static func shouldHandleReaderKey(
+        readerIsEnabled: Bool,
+        textIsEditing: Bool,
+        controlHasFocus: Bool
+    ) -> Bool {
+        readerIsEnabled && !textIsEditing && !controlHasFocus
+    }
+
     static func action(
         for key: ReaderKey,
         shiftPressed: Bool = false,
@@ -63,6 +71,7 @@ enum ReaderInputMapping {
 struct ReaderInputMonitor: NSViewRepresentable {
     let binding: BindingDirection
     let isEnabled: Bool
+    let controlHasKeyboardFocus: Bool
     let excludedTopHeight: CGFloat
     let excludedBottomHeight: CGFloat
     let fullScreenRequestSequence: Int
@@ -102,6 +111,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
         private var maximumDragDistance: CGFloat = 0
         private var binding: BindingDirection
         private var isEnabled: Bool
+        private var controlHasKeyboardFocus: Bool
         private var excludedTopHeight: CGFloat
         private var excludedBottomHeight: CGFloat
         private var lastFullScreenRequestSequence: Int
@@ -114,6 +124,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
         init(monitor: ReaderInputMonitor) {
             binding = monitor.binding
             isEnabled = monitor.isEnabled
+            controlHasKeyboardFocus = monitor.controlHasKeyboardFocus
             excludedTopHeight = monitor.excludedTopHeight
             excludedBottomHeight = monitor.excludedBottomHeight
             lastFullScreenRequestSequence = monitor.fullScreenRequestSequence
@@ -130,6 +141,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
         func update(from monitor: ReaderInputMonitor) {
             binding = monitor.binding
             isEnabled = monitor.isEnabled
+            controlHasKeyboardFocus = monitor.controlHasKeyboardFocus
             excludedTopHeight = monitor.excludedTopHeight
             excludedBottomHeight = monitor.excludedBottomHeight
             action = monitor.action
@@ -264,10 +276,14 @@ struct ReaderInputMonitor: NSViewRepresentable {
                 interaction()
             case .keyDown:
                 interaction()
-                guard isEnabled,
+                guard ReaderInputMapping.shouldHandleReaderKey(
+                          readerIsEnabled: isEnabled,
+                          textIsEditing: isEditingText(in: window),
+                          controlHasFocus: controlHasKeyboardFocus
+                              || isAppKitControlFocused(in: window)
+                      ),
                       !hasBlockingModifiers(event.modifierFlags),
-                      let key = readerKey(for: event),
-                      !isEditingText(in: window) else { return event }
+                      let key = readerKey(for: event) else { return event }
                 action(
                     ReaderInputMapping.action(
                         for: key,
@@ -280,6 +296,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
                 guard isEnabled,
                       let location = viewerLocation(for: event) else { return event }
                 interaction()
+                window.makeFirstResponder(nil)
                 mouseDownLocation = location
                 maximumDragDistance = 0
             case .leftMouseDragged:
@@ -362,6 +379,20 @@ struct ReaderInputMonitor: NSViewRepresentable {
 
         private func isEditingText(in window: NSWindow) -> Bool {
             window.firstResponder is NSTextView
+        }
+
+        private func isAppKitControlFocused(in window: NSWindow) -> Bool {
+            if window.firstResponder is NSControl {
+                return true
+            }
+            guard var view = window.firstResponder as? NSView else { return false }
+            while let superview = view.superview {
+                if superview is NSControl {
+                    return true
+                }
+                view = superview
+            }
+            return false
         }
     }
 }
