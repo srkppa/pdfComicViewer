@@ -22,6 +22,7 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var fileOpenRequestSequence = 0
     @Published private(set) var zoomCommand = ZoomCommand(action: .fit, sequence: 0)
     @Published private(set) var fullScreenRequestSequence = 0
+    @Published private(set) var pagePreviewSnapshot = PagePreviewSnapshot.empty
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
@@ -33,6 +34,8 @@ final class ReaderViewModel: ObservableObject {
     private var loadGeneration = 0
     private var openGeneration = 0
     private var pagePreviewGeneration = 0
+    private var pagePreviewDocumentID = UUID()
+    private var pagePreviewSnapshotRevision = 0
 
     init(loader: any PDFDocumentLoading, progressStore: any ReadingProgressStoring) {
         self.loader = loader
@@ -218,6 +221,8 @@ final class ReaderViewModel: ObservableObject {
         _ newSession: DocumentSession,
         preferences newPreferences: DocumentPreferences
     ) {
+        pagePreviewDocumentID = UUID()
+        pagePreviewSnapshot = .empty
         let page = clampedPage(newPreferences.lastPageIndex, in: newSession.pages)
         session = newSession
         passwordRequest = nil
@@ -235,7 +240,7 @@ final class ReaderViewModel: ObservableObject {
             containing: page,
             in: displayUnits
         ) ?? 0
-        schedulePagePreviews(resetCache: true)
+        schedulePagePreviews()
     }
 
     private func updateCurrentPageFromUnit() {
@@ -267,32 +272,37 @@ final class ReaderViewModel: ObservableObject {
         schedulePagePreviews()
     }
 
-    private func schedulePagePreviews(resetCache: Bool = false) {
+    private func schedulePagePreviews() {
         pagePreviewTask?.cancel()
         pagePreviewGeneration += 1
-        let generation = pagePreviewGeneration
+        let generation = PagePreviewGeneration(
+            documentID: pagePreviewDocumentID,
+            sequence: pagePreviewGeneration
+        )
+        let retainedIndexes = previewPageIndexes()
+        let visibleIndexes = Set(currentUnit?.pageIndexes ?? [])
+        let cache = pagePreviewCache
         pagePreviewTask = Task { [weak self] in
             guard let self else { return }
-            let retainedIndexes = self.previewPageIndexes()
-            let cache = self.pagePreviewCache
-
-            if resetCache {
-                await cache.retainOnly([])
-            } else {
-                await cache.retainOnly(retainedIndexes)
-            }
+            await cache.beginGeneration(generation, allowedIndexes: retainedIndexes)
 
             guard !Task.isCancelled,
-                  generation == self.pagePreviewGeneration,
+                  generation == self.currentPagePreviewGeneration,
                   let session = self.session else {
                 return
             }
+            await self.publishPagePreviewSnapshot(
+                for: generation,
+                visibleIndexes: visibleIndexes,
+                cache: cache
+            )
 
             for pageIndex in retainedIndexes {
-                guard !Task.isCancelled, generation == self.pagePreviewGeneration else {
+                guard !Task.isCancelled,
+                      generation == self.currentPagePreviewGeneration else {
                     return
                 }
-                if await cache.image(for: pageIndex) != nil {
+                if await cache.image(for: pageIndex, generation: generation) != nil {
                     continue
                 }
                 guard let page = session.document.page(at: pageIndex),
@@ -302,12 +312,45 @@ final class ReaderViewModel: ObservableObject {
                       ) else {
                     continue
                 }
-                guard !Task.isCancelled, generation == self.pagePreviewGeneration else {
+                guard !Task.isCancelled,
+                      generation == self.currentPagePreviewGeneration else {
                     return
                 }
-                await cache.insert(image, for: pageIndex)
+                let wasInserted = await cache.insert(
+                    image,
+                    for: pageIndex,
+                    generation: generation
+                )
+                guard wasInserted else { return }
+                await self.publishPagePreviewSnapshot(
+                    for: generation,
+                    visibleIndexes: visibleIndexes,
+                    cache: cache
+                )
             }
         }
+    }
+
+    private var currentPagePreviewGeneration: PagePreviewGeneration {
+        PagePreviewGeneration(
+            documentID: pagePreviewDocumentID,
+            sequence: pagePreviewGeneration
+        )
+    }
+
+    private func publishPagePreviewSnapshot(
+        for generation: PagePreviewGeneration,
+        visibleIndexes: Set<Int>,
+        cache: PagePreviewCache
+    ) async {
+        let images = await cache.snapshot(for: visibleIndexes, generation: generation)
+        guard generation == currentPagePreviewGeneration else { return }
+        pagePreviewSnapshotRevision += 1
+        pagePreviewSnapshot = PagePreviewSnapshot(
+            generation: generation,
+            revision: pagePreviewSnapshotRevision,
+            images: images
+        )
     }
 
     private func previewPageIndexes() -> Set<Int> {

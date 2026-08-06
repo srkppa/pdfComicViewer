@@ -30,6 +30,33 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 2))
     }
 
+    func testOpeningAndTurningPagePublishCurrentPlacementPreviewSnapshot() async throws {
+        let url = try PDFFixtureFactory.makePDF(pageSizes: Array(
+            repeating: CGSize(width: 600, height: 900),
+            count: 5
+        ))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let model = ReaderViewModel(
+            loader: PDFDocumentLoader(),
+            progressStore: FakeProgressStore()
+        )
+
+        await model.open(url: url)
+        try await waitUntil {
+            model.pagePreviewSnapshot.images[0] != nil
+        }
+
+        XCTAssertEqual(model.pagePreviewSnapshot.pageIndexes, [0])
+
+        model.next()
+        try await waitUntil {
+            model.pagePreviewSnapshot.images[1] != nil
+                && model.pagePreviewSnapshot.images[2] != nil
+        }
+
+        XCTAssertEqual(model.pagePreviewSnapshot.pageIndexes, [1, 2])
+    }
+
     func testOpenBuildsSpreadsAndRestoresSavedPage() async {
         let session = DocumentSession.fixture(pageCount: 6)
         let loader = FakePDFLoader(result: .ready(session))

@@ -126,7 +126,8 @@ struct ReaderView: View {
                         for: unit,
                         binding: model.preferences.binding
                     ),
-                    zoomCommand: model.zoomCommand
+                    zoomCommand: model.zoomCommand,
+                    pagePreviewSnapshot: model.pagePreviewSnapshot
                 )
             } else if !model.isLoading {
                 emptyState

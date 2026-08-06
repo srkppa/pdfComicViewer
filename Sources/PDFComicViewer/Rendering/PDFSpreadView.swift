@@ -7,13 +7,20 @@ struct PDFSpreadView: NSViewRepresentable {
     let document: PDFDocument
     let placement: PagePlacement
     let zoomCommand: ZoomCommand
+    let pagePreviewSnapshot: PagePreviewSnapshot
 
     func makeCoordinator() -> Coordinator {
         Coordinator(initialZoomCommand: zoomCommand)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let canvas = SpreadCanvasView(document: document, placement: placement)
+        let canvas = SpreadCanvasView(
+            document: document,
+            placement: placement,
+            previewImages: pagePreviewSnapshot.images,
+            previewGeneration: pagePreviewSnapshot.generation,
+            previewRevision: pagePreviewSnapshot.revision
+        )
         let scrollView = SpreadScrollView()
         scrollView.documentView = canvas
         scrollView.allowsMagnification = true
@@ -28,7 +35,13 @@ struct PDFSpreadView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let canvas = scrollView.documentView as? SpreadCanvasView else { return }
-        canvas.update(document: document, placement: placement)
+        canvas.update(
+            document: document,
+            placement: placement,
+            previewImages: pagePreviewSnapshot.images,
+            previewGeneration: pagePreviewSnapshot.generation,
+            previewRevision: pagePreviewSnapshot.revision
+        )
         canvas.relayout(to: scrollView.contentSize)
 
         guard context.coordinator.lastZoomCommand != zoomCommand else { return }
@@ -46,8 +59,10 @@ struct PDFSpreadView: NSViewRepresentable {
             scrollView.magnification = 1
             canvas.relayout(to: scrollView.contentSize)
         case .zoomIn:
+            canvas.discardPreviews()
             setMagnification(scrollView.magnification * 1.25, on: scrollView)
         case .zoomOut:
+            canvas.discardPreviews()
             setMagnification(scrollView.magnification / 1.25, on: scrollView)
         }
     }

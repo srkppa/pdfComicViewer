@@ -7,11 +7,27 @@ final class SpreadCanvasView: NSView {
     private var document: PDFDocument
     private var placement: PagePlacement
     private var pages: [PDFPage] = []
+    private var pageIndexes: [Int] = []
     private var pageFrames: [CGRect] = []
+    private var previewImages: [Int: CGImage]
+    private var previewGeneration: PagePreviewGeneration?
+    private var previewRevision: Int
+    private var discardedPreviewGeneration: PagePreviewGeneration?
+    private var usesPreviews = false
 
-    init(document: PDFDocument, placement: PagePlacement) {
+    init(
+        document: PDFDocument,
+        placement: PagePlacement,
+        previewImages: [Int: CGImage],
+        previewGeneration: PagePreviewGeneration? = nil,
+        previewRevision: Int = 0
+    ) {
         self.document = document
         self.placement = placement
+        self.previewImages = previewImages
+        self.previewGeneration = previewGeneration
+        self.previewRevision = previewRevision
+        usesPreviews = !previewImages.isEmpty
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = ReaderTheme.canvasNSColor.cgColor
@@ -25,12 +41,28 @@ final class SpreadCanvasView: NSView {
 
     override var isOpaque: Bool { true }
 
-    func update(document: PDFDocument, placement: PagePlacement) {
-        guard self.document !== document || self.placement != placement else { return }
-        self.document = document
-        self.placement = placement
-        reloadPages()
-        relayoutPages()
+    func update(
+        document: PDFDocument,
+        placement: PagePlacement,
+        previewImages: [Int: CGImage],
+        previewGeneration: PagePreviewGeneration?,
+        previewRevision: Int
+    ) {
+        let presentationChanged = self.document !== document || self.placement != placement
+        if presentationChanged {
+            self.document = document
+            self.placement = placement
+            reloadPages()
+            relayoutPages()
+            discardPreviews()
+        }
+        guard self.previewGeneration != previewGeneration || self.previewRevision != previewRevision else {
+            return
+        }
+        self.previewImages = previewImages
+        self.previewGeneration = previewGeneration
+        self.previewRevision = previewRevision
+        usesPreviews = !previewImages.isEmpty && previewGeneration != discardedPreviewGeneration
         needsDisplay = true
     }
 
@@ -49,9 +81,31 @@ final class SpreadCanvasView: NSView {
         context.setFillColor(ReaderTheme.canvasNSColor.cgColor)
         context.fill(dirtyRect)
 
-        for (page, pageFrame) in zip(pages, pageFrames) where pageFrame.intersects(dirtyRect) {
-            draw(page, in: pageFrame, context: context)
+        var usedPreview = false
+        for ((pageIndex, page), pageFrame) in zip(zip(pageIndexes, pages), pageFrames)
+            where pageFrame.intersects(dirtyRect) {
+            let preview = previewImage(for: pageIndex)
+            usedPreview = usedPreview || preview != nil
+            draw(page, preview: preview, in: pageFrame, context: context)
         }
+        if usedPreview {
+            Task { @MainActor [weak self] in
+                self?.discardPreviews()
+            }
+        }
+    }
+
+    func previewImage(for pageIndex: Int) -> CGImage? {
+        guard usesPreviews else { return nil }
+        return previewImages[pageIndex]
+    }
+
+    func discardPreviews() {
+        discardedPreviewGeneration = previewGeneration
+        guard usesPreviews else { return }
+        usesPreviews = false
+        previewImages = [:]
+        needsDisplay = true
     }
 
     private func reloadPages() {
@@ -61,8 +115,12 @@ final class SpreadCanvasView: NSView {
         } else {
             indexes = [placement.left, placement.right]
         }
-        pages = indexes.compactMap { index in
+        pageIndexes = indexes.compactMap { index in
             guard let index, document.pageCount > index, index >= 0 else { return nil }
+            return index
+        }
+        pages = pageIndexes.compactMap { index in
+            guard document.pageCount > index, index >= 0 else { return nil }
             return document.page(at: index)
         }
     }
@@ -86,7 +144,21 @@ final class SpreadCanvasView: NSView {
         }
     }
 
-    private func draw(_ page: PDFPage, in frame: CGRect, context: CGContext) {
+    private func draw(
+        _ page: PDFPage,
+        preview: CGImage?,
+        in frame: CGRect,
+        context: CGContext
+    ) {
+        if let preview {
+            context.saveGState()
+            defer { context.restoreGState() }
+            context.setFillColor(NSColor.white.cgColor)
+            context.fill(frame)
+            context.interpolationQuality = .high
+            context.draw(preview, in: frame)
+            return
+        }
         let cropBox = page.bounds(for: .cropBox)
         let pageSize = displayedSize(of: page)
         guard cropBox.width > 0, cropBox.height > 0,
