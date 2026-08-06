@@ -105,6 +105,16 @@ final class SpreadScrollView: NSScrollView {
         canvas.relayout(to: contentSize)
     }
 
+    override func keyDown(with event: NSEvent) {
+        guard !ReaderInputMapping.shouldConsumeUnhandledKey(
+            keyCode: event.keyCode,
+            hasCommandOrControlOrOption: event.modifierFlags
+                .intersection([.command, .control, .option])
+                .isEmpty == false
+        ) else { return }
+        super.keyDown(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         beginPageDrag(at: event.locationInWindow)
     }

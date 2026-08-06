@@ -19,6 +19,13 @@ enum ReaderInputAction: Equatable {
 }
 
 enum ReaderInputMapping {
+    static func shouldConsumeUnhandledKey(
+        keyCode: UInt16,
+        hasCommandOrControlOrOption: Bool
+    ) -> Bool {
+        !hasCommandOrControlOrOption && [123, 124, 49].contains(keyCode)
+    }
+
     static func shouldHandleReaderKey(
         readerIsEnabled: Bool,
         textIsEditing: Bool,

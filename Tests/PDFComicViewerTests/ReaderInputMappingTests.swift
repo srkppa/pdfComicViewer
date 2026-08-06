@@ -90,6 +90,42 @@ final class ReaderInputMappingTests: XCTestCase {
         )
     }
 
+    func testUnhandledReaderKeysAreConsumedBeforeAppKitCanBeep() {
+        XCTAssertTrue(
+            ReaderInputMapping.shouldConsumeUnhandledKey(
+                keyCode: 123,
+                hasCommandOrControlOrOption: false
+            )
+        )
+        XCTAssertTrue(
+            ReaderInputMapping.shouldConsumeUnhandledKey(
+                keyCode: 124,
+                hasCommandOrControlOrOption: false
+            )
+        )
+        XCTAssertTrue(
+            ReaderInputMapping.shouldConsumeUnhandledKey(
+                keyCode: 49,
+                hasCommandOrControlOrOption: false
+            )
+        )
+    }
+
+    func testUnhandledModifiedOrUnrelatedKeysKeepAppKitDefaultBehavior() {
+        XCTAssertFalse(
+            ReaderInputMapping.shouldConsumeUnhandledKey(
+                keyCode: 123,
+                hasCommandOrControlOrOption: true
+            )
+        )
+        XCTAssertFalse(
+            ReaderInputMapping.shouldConsumeUnhandledKey(
+                keyCode: 0,
+                hasCommandOrControlOrOption: false
+            )
+        )
+    }
+
     func testRightBindingMapsLeftArrowToNextAndRightArrowToPrevious() {
         XCTAssertEqual(
             ReaderInputMapping.action(for: .leftArrow, binding: .right),

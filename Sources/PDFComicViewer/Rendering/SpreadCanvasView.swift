@@ -42,6 +42,16 @@ final class SpreadCanvasView: NSView {
 
     override var isOpaque: Bool { true }
 
+    override func keyDown(with event: NSEvent) {
+        guard !ReaderInputMapping.shouldConsumeUnhandledKey(
+            keyCode: event.keyCode,
+            hasCommandOrControlOrOption: event.modifierFlags
+                .intersection([.command, .control, .option])
+                .isEmpty == false
+        ) else { return }
+        super.keyDown(with: event)
+    }
+
     override func mouseDown(with event: NSEvent) {
         (enclosingScrollView as? SpreadScrollView)?.beginPageDrag(
             at: event.locationInWindow
