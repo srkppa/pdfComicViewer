@@ -4,6 +4,32 @@ import XCTest
 
 @MainActor
 final class ReaderViewModelTests: XCTestCase {
+    func testReaderCommandRequestsAdvanceTheirSequences() {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 1))),
+            progressStore: FakeProgressStore()
+        )
+
+        model.requestFileOpen()
+        model.zoomIn()
+        model.zoomOut()
+        model.fitToWindow()
+        model.requestFullScreenToggle()
+
+        XCTAssertEqual(model.fileOpenRequestSequence, 1)
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 3))
+        XCTAssertEqual(model.fullScreenRequestSequence, 1)
+    }
+
+    func testTurningPageReturnsZoomToFit() async {
+        let (model, _) = await makeOpenedModel(pageCount: 4)
+        model.zoomIn()
+
+        model.next()
+
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 2))
+    }
+
     func testOpenBuildsSpreadsAndRestoresSavedPage() async {
         let session = DocumentSession.fixture(pageCount: 6)
         let loader = FakePDFLoader(result: .ready(session))

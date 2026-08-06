@@ -14,7 +14,7 @@ final class SpreadCanvasView: NSView {
         self.placement = placement
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.backgroundColor = ReaderTheme.canvasNSColor.cgColor
         reloadPages()
     }
 
@@ -46,7 +46,7 @@ final class SpreadCanvasView: NSView {
         super.draw(dirtyRect)
 
         guard let context = NSGraphicsContext.current?.cgContext else { return }
-        context.setFillColor(NSColor.windowBackgroundColor.cgColor)
+        context.setFillColor(ReaderTheme.canvasNSColor.cgColor)
         context.fill(dirtyRect)
 
         for (page, pageFrame) in zip(pages, pageFrames) where pageFrame.intersects(dirtyRect) {

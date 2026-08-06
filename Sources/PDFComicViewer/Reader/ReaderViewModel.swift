@@ -19,6 +19,9 @@ final class ReaderViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var warningMessage: String?
     @Published var preferences = DocumentPreferences.defaults
+    @Published private(set) var fileOpenRequestSequence = 0
+    @Published private(set) var zoomCommand = ZoomCommand(action: .fit, sequence: 0)
+    @Published private(set) var fullScreenRequestSequence = 0
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
@@ -33,9 +36,48 @@ final class ReaderViewModel: ObservableObject {
         self.progressStore = progressStore
     }
 
+    static func live(fileManager: FileManager = .default) -> ReaderViewModel {
+        let supportDirectory = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? fileManager.temporaryDirectory
+        return ReaderViewModel(
+            loader: PDFDocumentLoader(),
+            progressStore: FileReadingProgressStore(
+                fileURL: progressFileURL(applicationSupportDirectory: supportDirectory)
+            )
+        )
+    }
+
+    static func progressFileURL(applicationSupportDirectory: URL) -> URL {
+        applicationSupportDirectory
+            .appendingPathComponent("com.srkppa.PDFComicViewer", isDirectory: true)
+            .appendingPathComponent("reading-progress.json")
+    }
+
     var currentUnit: DisplayUnit? {
         guard displayUnits.indices.contains(currentUnitIndex) else { return nil }
         return displayUnits[currentUnitIndex]
+    }
+
+    func requestFileOpen() {
+        fileOpenRequestSequence += 1
+    }
+
+    func zoomIn() {
+        issueZoom(.zoomIn)
+    }
+
+    func zoomOut() {
+        issueZoom(.zoomOut)
+    }
+
+    func fitToWindow() {
+        issueZoom(.fit)
+    }
+
+    func requestFullScreenToggle() {
+        fullScreenRequestSequence += 1
     }
 
     func open(url: URL) async {
@@ -96,6 +138,7 @@ final class ReaderViewModel: ObservableObject {
         guard nextIndex != currentUnitIndex else { return }
         currentUnitIndex = nextIndex
         updateCurrentPageFromUnit()
+        fitToWindow()
         scheduleSave()
     }
 
@@ -105,6 +148,7 @@ final class ReaderViewModel: ObservableObject {
         guard previousIndex != currentUnitIndex else { return }
         currentUnitIndex = previousIndex
         updateCurrentPageFromUnit()
+        fitToWindow()
         scheduleSave()
     }
 
@@ -218,6 +262,10 @@ final class ReaderViewModel: ObservableObject {
     private func clampedPage(_ page: Int, in pages: [PageGeometry]) -> Int {
         guard !pages.isEmpty else { return 0 }
         return min(max(page, 0), pages.count - 1)
+    }
+
+    private func issueZoom(_ action: ZoomCommand.Action) {
+        zoomCommand = ZoomCommand(action: action, sequence: zoomCommand.sequence + 1)
     }
 
     private func scheduleSave() {
