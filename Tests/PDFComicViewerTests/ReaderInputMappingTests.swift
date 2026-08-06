@@ -3,6 +3,53 @@ import XCTest
 @testable import PDFComicViewer
 
 final class ReaderInputMappingTests: XCTestCase {
+    @MainActor
+    func testMonitorHostConsumesArrowKeyThroughResponderChain() throws {
+        var actions: [ReaderInputAction] = []
+        let monitor = ReaderInputMonitor(
+            binding: .right,
+            isEnabled: true,
+            controlHasKeyboardFocus: false,
+            excludedTopHeight: 0,
+            excludedBottomHeight: 0,
+            fullScreenRequestSequence: 0,
+            action: { actions.append($0) },
+            interaction: {},
+            contextPageRequest: { _, _ in },
+            fullScreenChange: { _ in }
+        )
+        let coordinator = monitor.makeCoordinator()
+        let hostView = MonitorHostView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        hostView.coordinator = coordinator
+        let window = NSWindow(
+            contentRect: hostView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostView
+        coordinator.attach(to: hostView)
+        let event = try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: [.function, .numericPad],
+                timestamp: 0,
+                windowNumber: window.windowNumber,
+                context: nil,
+                characters: "\u{F702}",
+                charactersIgnoringModifiers: "\u{F702}",
+                isARepeat: false,
+                keyCode: 123
+            )
+        )
+
+        XCTAssertTrue(window.makeFirstResponder(hostView))
+        hostView.keyDown(with: event)
+
+        XCTAssertEqual(actions, [.next])
+    }
+
     func testDragPanKeepsClickJitterStationaryAndPansAfterThreshold() {
         let start = CGPoint(x: 100, y: 100)
         let origin = CGPoint(x: 40, y: 60)

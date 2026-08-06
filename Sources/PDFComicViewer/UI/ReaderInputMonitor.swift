@@ -234,6 +234,9 @@ struct ReaderInputMonitor: NSViewRepresentable {
             }
             performPendingFullScreenRequest()
             updateMonitoringState()
+            if window.firstResponder === window || window.firstResponder == nil {
+                window.makeFirstResponder(view)
+            }
         }
 
         func detach() {
@@ -273,7 +276,6 @@ struct ReaderInputMonitor: NSViewRepresentable {
             window.acceptsMouseMovedEvents = true
             eventMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: [
-                    .keyDown,
                     .leftMouseDown,
                     .leftMouseDragged,
                     .leftMouseUp,
@@ -308,29 +310,11 @@ struct ReaderInputMonitor: NSViewRepresentable {
             switch event.type {
             case .mouseMoved:
                 interaction()
-            case .keyDown:
-                interaction()
-                guard ReaderInputMapping.shouldHandleReaderKey(
-                          readerIsEnabled: isEnabled,
-                          textIsEditing: isEditingText(in: window),
-                          controlHasFocus: controlHasKeyboardFocus
-                              || isAppKitControlFocused(in: window)
-                      ),
-                      !hasBlockingModifiers(event.modifierFlags),
-                      let key = readerKey(for: event) else { return event }
-                action(
-                    ReaderInputMapping.action(
-                        for: key,
-                        shiftPressed: event.modifierFlags.contains(.shift),
-                        binding: binding
-                    )
-                )
-                return nil
             case .leftMouseDown:
                 guard isEnabled,
                       let location = viewerLocation(for: event) else { return event }
                 interaction()
-                window.makeFirstResponder(nil)
+                window.makeFirstResponder(hostView)
                 mouseDownLocation = location
                 maximumDragDistance = 0
             case .leftMouseDragged:
@@ -371,6 +355,27 @@ struct ReaderInputMonitor: NSViewRepresentable {
                 break
             }
             return event
+        }
+
+        func handleKeyDown(_ event: NSEvent) -> Bool {
+            guard let window else { return false }
+            interaction()
+            guard ReaderInputMapping.shouldHandleReaderKey(
+                      readerIsEnabled: isEnabled,
+                      textIsEditing: isEditingText(in: window),
+                      controlHasFocus: controlHasKeyboardFocus
+                          || isAppKitControlFocused(in: window)
+                  ),
+                  !hasBlockingModifiers(event.modifierFlags),
+                  let key = readerKey(for: event) else { return false }
+            action(
+                ReaderInputMapping.action(
+                    for: key,
+                    shiftPressed: event.modifierFlags.contains(.shift),
+                    binding: binding
+                )
+            )
+            return true
         }
 
         private func viewerLocation(
@@ -435,6 +440,10 @@ struct ReaderInputMonitor: NSViewRepresentable {
 final class MonitorHostView: NSView {
     weak var coordinator: ReaderInputMonitor.Coordinator?
 
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         coordinator?.attach(to: self)
@@ -442,5 +451,10 @@ final class MonitorHostView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard coordinator?.handleKeyDown(event) != true else { return }
+        super.keyDown(with: event)
     }
 }
