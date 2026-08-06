@@ -1,62 +1,62 @@
-# PDF Comic Viewer Design
+# PDF漫画ビューアー 設計書
 
-## Summary
+## 概要
 
-Build a personal macOS application for reading local comic PDFs. The application displays ordinary portrait pages as right-bound spreads, displays the cover and merged landscape spreads as single pages, and lets the reader correct page pairing or display mode without editing the PDF.
+ローカルに保存された漫画PDFを読むための、個人用macOSアプリケーションを作る。通常の縦長ページは右綴じの見開きで表示し、表紙と結合済みの横長見開きページは単独で表示する。PDF自体を編集することなく、見開きの組み合わせや表示方法を読者が修正できるようにする。
 
-The first release is a practical minimum product for one user's Mac. It does not upload, copy, or modify opened PDFs and does not make network requests.
+初回リリースは、自分のMacで実用的に読める最小構成とする。開いたPDFをアップロード、複製、変更せず、ネットワーク通信も行わない。
 
-## Goals
+## 目標
 
-- Open a PDF from a file picker or Finder drag and drop.
-- Read right-bound comics as two-page spreads, with left-bound reading available per document.
-- Display page 1 as a centered cover by default.
-- Shift spread pairing by one physical PDF page when a document's page alignment differs.
-- Switch quickly between single-page and spread display.
-- Detect merged landscape spreads and show them alone while otherwise remaining in spread mode.
-- Allow the reader to correct landscape detection for individual pages.
-- Support fit-to-window, zoom, pan, keyboard navigation, click navigation, and full screen.
-- Restore reading position and document-specific settings.
-- Remain responsive with long or high-resolution PDFs.
+- ファイル選択画面またはFinderからのドラッグ＆ドロップでPDFを開ける。
+- 漫画を右綴じの見開きで読め、PDFごとに左綴じへ切り替えられる。
+- 1ページ目を既定で中央に単独表示する。
+- PDFのページ構成に合わせて、見開きの組み合わせを物理PDFページ1枚分ずらせる。
+- 単ページ表示と見開き表示をすぐに切り替えられる。
+- 結合済みの横長見開きページを検出し、見開きモード中でも単独表示する。
+- 横長ページの自動判定をページ単位で手動修正できる。
+- ウインドウに合わせる表示、拡大縮小、パン、キーボード操作、クリック操作、全画面表示に対応する。
+- 読書位置とPDFごとの設定を復元する。
+- ページ数や解像度が大きなPDFでも快適に操作できる。
 
-## Non-goals for the first release
+## 初回リリースで対象外とするもの
 
-- Windows or Linux support.
-- A library bookshelf, cover search, reading-status management, or metadata editing.
-- Cloud storage, synchronization, accounts, or network access.
-- PDF editing, annotation, conversion, or export.
-- Mac App Store distribution, automatic updates, signing, or notarization.
-- Animated page-turn effects.
+- WindowsおよびLinux対応。
+- 本棚、表紙検索、読了管理、メタデータ編集。
+- クラウド保存、同期、アカウント、ネットワーク通信。
+- PDFの編集、注釈、変換、書き出し。
+- Mac App Store配布、自動更新、署名、公証。
+- ページをめくるアニメーション。
 
-## Technology
+## 採用技術
 
-Use Swift, SwiftUI, AppKit integration, and PDFKit.
+Swift、SwiftUI、AppKit連携、PDFKitを使用する。
 
-PDFKit provides document parsing, page access, rendering, navigation, and zoom support. SwiftUI provides the application shell, toolbar, state-driven controls, dialogs, and settings. AppKit bridges file and window behavior where SwiftUI or PDFKit needs native integration.
+PDFKitがPDFの解析、ページ取得、描画、移動、拡大縮小を担当する。SwiftUIがアプリケーションの外枠、ツールバー、状態に連動する操作部品、ダイアログ、設定画面を担当する。SwiftUIまたはPDFKitだけでは不足するファイル操作やウインドウ操作をAppKitで補う。
 
-This native stack is preferred because the first release targets only macOS and values a small dependency surface, native file handling, and efficient PDF rendering over cross-platform reuse.
+初回リリースはmacOSだけを対象とするため、クロスプラットフォームでのコード再利用より、依存関係の少なさ、macOSらしいファイル操作、効率的なPDF描画を優先し、このネイティブ構成を採用する。
 
-## Architecture
+## アーキテクチャ
 
 ### `ReaderView`
 
-The SwiftUI root for the reading window. It renders the toolbar, empty state, loading state, page area, page counter, password prompt, and recoverable errors. It forwards user intent to `ReaderViewModel` rather than manipulating PDFKit directly.
+閲覧ウインドウのルートとなるSwiftUIビュー。ツールバー、初期画面、読み込み中表示、ページ表示領域、ページ番号、パスワード入力、復旧可能なエラーを表示する。PDFKitを直接操作せず、ユーザーの操作を`ReaderViewModel`へ渡す。
 
 ### `PDFSpreadView`
 
-An `NSViewRepresentable` bridge around the PDFKit/AppKit rendering surface. It accepts one `DisplayUnit` at a time and lays out either one page or two pages against a dark background. It owns fit-to-window calculation, zoom, pan, and render-view reuse, but it does not decide which pages belong together.
+PDFKitとAppKitの描画領域を`NSViewRepresentable`でSwiftUIへ接続する。1つの`DisplayUnit`を受け取り、暗い背景上へ1ページまたは2ページを配置する。ウインドウに合わせる倍率の計算、拡大縮小、パン、描画ビューの再利用を担当するが、どのページを組み合わせるかは判断しない。
 
 ### `ReaderViewModel`
 
-The window-level state owner. It coordinates document loading, current display-unit selection, reading direction, display mode, pairing alignment, zoom commands, full-screen commands, and progress persistence.
+閲覧ウインドウ単位の状態を管理する。PDFの読み込み、現在の表示単位、綴じ方向、表示モード、見開き位置、拡大縮小命令、全画面命令、読書位置の保存を調整する。
 
 ### `DocumentSession`
 
-Owns one opened `PDFDocument`, its file reference, page metadata, password-unlock state, and current `DocumentPreferences`. It exposes page count and page geometry without exposing persistence details to the UI.
+開いている1つの`PDFDocument`、ファイル参照、ページ情報、パスワード解除状態、現在の`DocumentPreferences`を保持する。保存処理の詳細をUIへ公開せず、ページ数やページ寸法を提供する。
 
 ### `SpreadBuilder`
 
-A pure component that converts physical PDF page indexes into an ordered array of `DisplayUnit` values. It has no PDFKit view dependency and is table-tested independently.
+物理PDFページのインデックスを、順序付けされた`DisplayUnit`の配列へ変換する純粋な処理。PDFKitのビューには依存せず、表形式の単体テストで独立して検証する。
 
 ```swift
 enum DisplayUnit: Equatable {
@@ -65,179 +65,179 @@ enum DisplayUnit: Equatable {
 }
 ```
 
-`earlierPageIndex` and `laterPageIndex` describe reading order. Visual left/right placement is applied later from the binding direction.
+`earlierPageIndex`と`laterPageIndex`は読む順番を表す。実際の左右配置は、後段で綴じ方向に応じて決定する。
 
 ### `ReadingProgressStore`
 
-Persists document preferences and a macOS bookmark reference in Application Support. Persistence is asynchronous and coalesced so rapid page turns do not synchronously write once per key press.
+PDFごとの設定とmacOSのブックマーク参照をApplication Supportへ保存する。連続したページ送りのたびに同期書き込みが発生しないよう、保存処理は非同期でまとめて実行する。
 
-## Page grouping rules
+## ページの組み立て規則
 
-PDF page indexes are zero-based internally and shown as one-based page numbers in the UI.
+内部ではPDFページを0始まりのインデックスで扱い、UI上では1始まりのページ番号として表示する。
 
-### Global single-page mode
+### 単ページモード
 
-Every physical PDF page becomes one `.single` display unit. A landscape page remains one physical page and is fitted as a wide image. Page navigation advances one PDF page at a time.
+すべての物理PDFページを1つずつ`.single`の表示単位にする。横長ページも1つの物理ページとして扱い、横長のまま表示領域へ収める。ページ送りではPDFを1ページずつ進める。
 
-### Spread mode
+### 見開きモード
 
-Spread mode follows these rules in order:
+次の順番でページを組み立てる。
 
-1. Determine which pages must be displayed alone.
-2. Page 1 is alone when cover alignment is enabled.
-3. A page whose crop-box width is greater than its height is alone by automatic landscape detection.
-4. A per-page manual override may force an automatically detected page to be pairable or force any page to be alone.
-5. Remaining consecutive pages are paired in PDF order.
-6. A forced-single page ends the current run. Pairing starts fresh with the next page.
-7. If one page remains at the end of a run or document, it is displayed alone.
+1. 単独表示すべきページを決定する。
+2. 表紙配置が有効な場合、1ページ目を単独表示する。
+3. クロップボックスの横幅が高さより大きいページは、自動判定により単独表示する。
+4. ページ単位の手動設定により、自動判定されたページを見開きへ含めたり、任意のページを単独表示にしたりできる。
+5. 残った連続ページをPDF内の順番で2枚ずつ組み合わせる。
+6. 単独表示ページに到達した時点で現在の連続区間を終了し、その次のページから見開きを新しく組み直す。
+7. 連続区間またはPDFの末尾に1ページだけ残った場合は、そのページを単独表示する。
 
-Automatic detection therefore produces this sequence for a document with a cover and a merged spread at physical page 4:
+表紙があり、物理PDFページ4が結合済みの横長見開きである場合、自動判定の結果は次のようになる。
 
 ```text
 [1]
 [2, 3]
-[4 landscape]
+[4 横長]
 [5, 6]
 ```
 
-### Pairing alignment
+### 見開き位置
 
-Each document has two alignment states:
+PDFごとに次の2つの配置状態を持つ。
 
-- Cover alignment: `[1] [2,3] [4,5] ...`
-- Shifted alignment: `[1,2] [3,4] [5,6] ...`
+- 表紙単独：`[1] [2,3] [4,5] ...`
+- 1ページずらす：`[1,2] [3,4] [5,6] ...`
 
-The “Shift spread by one page” command toggles these states. In spread mode, automatic or manually forced single pages remain boundaries; pages after each boundary are paired afresh. The alignment choice is persisted per document.
+「見開き位置を1ページずらす」操作で両者を切り替える。見開きモードでは、自動または手動で単独表示にしたページを区切りとして維持し、その後のページから見開きを組み直す。選択した配置状態はPDFごとに保存する。
 
-### Binding direction
+### 綴じ方向
 
-Binding direction changes visual placement and navigation direction, not grouping:
+綴じ方向は見た目の左右配置とページ送り方向だけを変更し、ページの組み合わせ自体は変更しない。
 
-- Right-bound pair `[2,3]`: page 2 on the right, page 3 on the left.
-- Left-bound pair `[2,3]`: page 2 on the left, page 3 on the right.
+- 右綴じの`[2,3]`：ページ2を右、ページ3を左へ配置する。
+- 左綴じの`[2,3]`：ページ2を左、ページ3を右へ配置する。
 
-Right-bound is the default. Binding direction is persisted per document.
+既定値は右綴じとし、PDFごとに綴じ方向を保存する。
 
-## Reader interface
+## 閲覧画面
 
-The initial empty state contains a prominent “Open PDF” action and accepts PDF drag and drop.
+初期画面には目立つ「PDFを開く」ボタンを表示し、PDFのドラッグ＆ドロップも受け付ける。
 
-The reading window uses a black or dark-gray background. The toolbar contains:
+閲覧ウインドウの背景は黒または濃いグレーとする。ツールバーには次の項目を配置する。
 
-- Open PDF
-- Binding direction control
-- Single-page / Spread segmented control
-- Shift spread by one page
-- Zoom out
-- Fit to window
-- Zoom in
-- Full screen
+- PDFを開く
+- 綴じ方向
+- 単ページ／見開きの切り替え
+- 見開き位置を1ページずらす
+- 縮小
+- ウインドウに合わせる
+- 拡大
+- 全画面
 
-The page counter appears as `12–13 / 180` for a pair and `12 / 180` for a single page. Controls automatically hide in full screen after inactivity and return on pointer movement.
+2ページ表示時のページ番号は`12–13 / 180`、単独表示時は`12 / 180`と表示する。全画面表示中は、操作がない状態でツールバーを自動的に隠し、ポインターを動かすと再表示する。
 
-The normal zoom state fits the entire current display unit in the available window without cropping. Zoomed content can be panned with dragging or trackpad scrolling. Changing pages returns to fit-to-window by default; transient zoom and pan are not persisted.
+通常の倍率では、現在の表示単位全体を切れないようにウインドウ内へ収める。拡大した内容はドラッグまたはトラックパッドのスクロールで移動できる。ページを変更すると既定で「ウインドウに合わせる」へ戻し、一時的な倍率と表示位置は保存しない。
 
-## Input behavior
+## 入力操作
 
-Right-bound defaults:
+右綴じ時の既定操作は次のとおり。
 
-| Input | Action |
+| 入力 | 動作 |
 | --- | --- |
-| Left arrow or Space | Next display unit |
-| Right arrow or Shift-Space | Previous display unit |
-| Click left half | Next display unit |
-| Click right half | Previous display unit |
-| `1` | Single-page mode |
-| `2` | Spread mode |
-| `S` | Shift spread pairing by one page |
-| Command-O | Open PDF |
-| Command-Plus | Zoom in |
-| Command-Minus | Zoom out |
-| Command-0 | Fit to window |
-| Command-Control-F | Toggle full screen |
+| 左矢印またはSpace | 次の表示単位へ進む |
+| 右矢印またはShift-Space | 前の表示単位へ戻る |
+| 画面左半分をクリック | 次の表示単位へ進む |
+| 画面右半分をクリック | 前の表示単位へ戻る |
+| `1` | 単ページモード |
+| `2` | 見開きモード |
+| `S` | 見開き位置を1ページずらす |
+| Command-O | PDFを開く |
+| Command-Plus | 拡大 |
+| Command-Minus | 縮小 |
+| Command-0 | ウインドウに合わせる |
+| Command-Control-F | 全画面を切り替える |
 
-Left-bound mode reverses the arrow and click-half meanings. Space and Shift-Space retain next/previous semantics in both directions.
+左綴じでは、矢印キーとクリック領域の意味を左右反転する。SpaceとShift-Spaceは、どちらの綴じ方向でも「次へ」「前へ」の意味を維持する。
 
-A page context menu provides “Use automatic layout,” “Show this PDF page alone,” and “Allow this PDF page in a pair.” These commands are relevant in spread mode and update the per-page override immediately.
+ページのコンテキストメニューには「自動レイアウトを使用」「このPDFページを単独表示」「このPDFページを見開きへ含める」を用意する。これらは見開きモードで使用し、選択するとページ単位の設定を即座に更新する。
 
-## Data flow
+## データの流れ
 
-1. The user selects or drops a PDF URL.
-2. `DocumentSession` validates and opens the `PDFDocument`.
-3. If locked, the session asks `ReaderViewModel` to present a password prompt and retries unlock in memory.
-4. `ReadingProgressStore` resolves saved preferences for the document bookmark.
-5. `DocumentSession` reads page crop-box dimensions.
-6. `SpreadBuilder` creates display units from page metadata and preferences.
-7. The saved physical page index is mapped to the display unit containing it.
-8. `PDFSpreadView` renders that unit with the selected binding direction.
-9. Navigation changes the current unit and schedules a coalesced progress save.
-10. Layout-setting changes rebuild display units while retaining the current physical page when possible.
+1. ユーザーがPDFのURLを選択またはドロップする。
+2. `DocumentSession`がファイルを検証し、`PDFDocument`を開く。
+3. PDFがロックされている場合、`ReaderViewModel`へパスワード入力の表示を依頼し、入力されたパスワードをメモリ上だけで使って解除を再試行する。
+4. `ReadingProgressStore`がファイルのブックマークに対応する保存済み設定を読み込む。
+5. `DocumentSession`が各ページのクロップボックス寸法を取得する。
+6. `SpreadBuilder`がページ情報と設定から表示単位を作る。
+7. 保存済みの物理ページ位置を、そのページを含む表示単位へ対応付ける。
+8. `PDFSpreadView`が選択された綴じ方向で表示単位を描画する。
+9. ページ移動によって現在の表示単位を変更し、まとめて実行される読書位置保存を予約する。
+10. レイアウト設定を変更した場合、現在の物理ページを可能な限り維持しながら表示単位を再構築する。
 
-## Persistence model
+## 保存するデータ
 
-Persist the following per document:
+PDFごとに次の情報を保存する。
 
-- macOS bookmark data for the file URL
-- last known normalized path for diagnostics and fallback matching
-- file size and modification date to detect likely replacement
-- last visible physical page index
-- binding direction
-- global display mode
-- pairing alignment
-- per-page layout overrides
+- ファイルURLを示すmacOSのブックマークデータ
+- 問題調査と予備照合に使用する、最後に確認できた正規化済みパス
+- ファイルが置き換えられた可能性を検出するためのファイルサイズと更新日時
+- 最後に表示していた物理ページのインデックス
+- 綴じ方向
+- 全体の表示モード
+- 見開き位置
+- ページ単位のレイアウト設定
 
-If bookmark resolution fails, the application shows the last known filename and asks the user to locate the PDF again. Selecting a replacement updates the bookmark and retains preferences after user confirmation when size or modification metadata differs.
+ブックマークを解決できない場合は、最後に確認できたファイル名を表示し、PDFの場所を再指定できるようにする。再指定されたファイルのサイズまたは更新日時が異なる場合は、確認を取ったうえで設定を維持し、ブックマークを更新する。
 
-Passwords are never persisted.
+パスワードは保存しない。
 
-## Rendering and performance
+## 描画と性能
 
-Keep rendered content for the current display unit and at most one unit before and after it. Cancel obsolete pre-render work after rapid navigation. Release distant page images and views so cache size does not scale with total page count.
+描画済みの内容は、現在の表示単位と、その前後それぞれ最大1単位だけ保持する。素早くページを送った場合は不要になった先読み処理を中止する。離れたページの画像とビューを解放し、PDFの総ページ数に比例してキャッシュが増えないようにする。
 
-PDF parsing and page-metadata collection must not block the main thread. UI state changes and PDFKit view updates occur on the main actor. Opening a large PDF shows a progress indicator until the first display unit is ready; remaining page metadata may be collected incrementally if full scanning is measurably slow.
+PDFの解析とページ情報の取得でメインスレッドを塞がない。UIの状態変更とPDFKitビューの更新はメインアクター上で実行する。大きなPDFを開く場合、最初の表示単位を用意できるまで進行表示を出す。全ページの情報取得が目に見えて遅い場合は、残りのページ情報を段階的に取得する。
 
-## Error handling
+## エラー処理
 
-- Unsupported or corrupt input: show a concise error and keep the open action available.
-- Empty PDF: report that the document has no readable pages.
-- Password-protected PDF: prompt for a password, report an incorrect password inline, and allow cancellation.
-- Missing saved file: offer a locate-file action without deleting saved preferences automatically.
-- Page render failure: show an error placeholder for that page while keeping navigation operational.
-- Persistence failure: continue reading, show a non-blocking warning, and retry on the next state change or application close.
+- 非対応または破損したファイル：簡潔な理由を表示し、別のPDFを選べる状態を維持する。
+- 空のPDF：読み取れるページがないことを表示する。
+- パスワード付きPDF：パスワード入力を表示し、誤っている場合はその場で通知し、キャンセルも可能にする。
+- 保存後に見つからなくなったPDF：設定を自動削除せず、ファイルを再指定する操作を提示する。
+- ページ描画失敗：該当ページにエラー表示を出し、ほかのページへの移動は継続可能にする。
+- 設定保存失敗：閲覧を継続し、操作を妨げない警告を表示して、次の状態変更時またはアプリ終了時に再試行する。
 
-Opening a new document must not discard the currently readable document until validation of the new document succeeds.
+新しいPDFを開く場合、そのPDFの検証が成功するまで、現在読めているPDFを破棄しない。
 
-## Testing
+## テスト方針
 
-### Unit tests
+### 単体テスト
 
-Table-test `SpreadBuilder` with:
+`SpreadBuilder`を次の条件で表形式にテストする。
 
-- odd and even page counts
-- one-page and empty inputs
-- cover and shifted alignment
-- a landscape page at the beginning, middle, and end
-- consecutive landscape pages
-- manual force-single and force-pairable overrides
-- leftover portrait pages adjacent to single-page boundaries
-- switching display mode while preserving the physical-page anchor
+- ページ数が奇数の場合と偶数の場合
+- 1ページだけの場合と0ページの場合
+- 表紙単独と1ページずらした配置
+- 先頭、中間、末尾に横長ページがある場合
+- 横長ページが連続する場合
+- 手動で単独表示または見開き対象にした場合
+- 単独表示の境界付近で縦長ページが1枚残る場合
+- 表示モードを切り替えても物理ページ位置を維持できること
 
-Separately test the presentation mapper that converts each pair's reading order into right-bound and left-bound visual placement.
+読む順番で表された各ページ組を右綴じまたは左綴じの左右配置へ変換する処理は、`SpreadBuilder`とは分けてテストする。
 
-Test persistence encoding, decoding, bookmark replacement metadata, and corrupt saved data using isolated temporary storage.
+保存データの符号化と復号、ブックマーク再指定時のファイル情報、破損した保存データを、分離された一時保存領域でテストする。
 
-### Integration tests
+### 結合テスト
 
-Use small local fixtures for portrait-only, mixed portrait/landscape, encrypted, empty, and intentionally corrupt PDFs. Verify open, password unlock, state restoration, drag and drop, menu commands, and keyboard navigation.
+縦長ページだけ、縦長と横長の混在、暗号化済み、空、意図的に破損させた小さなPDFをテスト用ファイルとして使用する。ファイルを開く操作、パスワード解除、状態復元、ドラッグ＆ドロップ、メニュー操作、キーボード操作を検証する。
 
-### UI and manual verification
+### UIおよび手動確認
 
-- Resize the window through narrow, wide, and full-screen states.
-- Confirm fit-to-window never crops a page at default zoom.
-- Verify click regions and arrows in both binding directions.
-- Verify a merged landscape spread is readable without changing global spread mode.
-- Open a several-hundred-page high-resolution comic and navigate rapidly while observing responsiveness and bounded memory use.
+- ウインドウを細長い状態、横長の状態、全画面へ変更する。
+- 既定倍率でページが切れず、必ずウインドウ内へ収まることを確認する。
+- 両方の綴じ方向で、クリック領域と矢印キーの動作を確認する。
+- 全体の見開きモードを変更せず、結合済みの横長見開きを読めることを確認する。
+- 数百ページの高解像度漫画PDFを開き、素早くページを送りながら、操作性とメモリ使用量が一定範囲に保たれることを確認する。
 
-## Acceptance criteria
+## 完了条件
 
-The first release is complete when a user can open a local comic PDF, read it from beginning to end in right-bound spreads, correct a one-page pairing offset, view merged landscape spreads alone, override incorrect automatic decisions, switch between single and spread modes, navigate and zoom comfortably in full screen, quit, reopen the same PDF, and resume at the saved position without the PDF leaving the Mac or being modified.
+ユーザーがローカルの漫画PDFを開き、最初から最後まで右綴じの見開きで読み、見開き位置を1ページ分修正し、結合済みの横長見開きを単独表示し、自動判定の誤りを修正し、単ページ表示と見開き表示を切り替え、全画面で快適にページ移動と拡大縮小を行い、アプリ終了後に同じPDFを再び開いて前回の位置から再開できること。これらの操作中、PDFがMacの外部へ送信されたり変更されたりしないこと。
