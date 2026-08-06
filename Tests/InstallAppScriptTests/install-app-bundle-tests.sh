@@ -25,11 +25,23 @@ EXPECTED_USER_APP="$HOME/Applications/PDF漫画ビューアー.app"
 [[ "$(validated_install_destination "$HOME" "$EXPECTED_USER_APP")" == "$EXPECTED_USER_APP" ]] || {
     fail "現在のHOMEに対する正規のインストール先を拒否しました"
 }
-for invalid_home in "" "/" "relative/home"; do
-    if validated_install_destination "$invalid_home" "$EXPECTED_USER_APP" > /dev/null 2>&1; then
-        fail "安全でないHOMEを受理しました: ${invalid_home:-<empty>}"
-    fi
-done
+if validated_install_destination "" "/Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
+    fail "空のHOMEを受理しました"
+fi
+if validated_install_destination "/" "/Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
+    fail "ルートをHOMEとして受理しました"
+fi
+if validated_install_destination "/." "/./Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
+    fail "ルートの別表現/.をHOMEとして受理しました"
+fi
+if validated_install_destination "/tmp/.." "/tmp/../Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
+    fail "ルートへ解決される/tmp/..をHOMEとして受理しました"
+fi
+if validated_install_destination \
+    "relative/home" \
+    "relative/home/Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
+    fail "相対パスをHOMEとして受理しました"
+fi
 if validated_install_destination "$HOME" "$TEST_ROOT/Applications/PDF漫画ビューアー.app" > /dev/null 2>&1; then
     fail "HOMEと一致しないインストール先を受理しました"
 fi
