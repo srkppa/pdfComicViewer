@@ -1,3 +1,5 @@
+import Foundation
+
 enum AppConfiguration {
     static let applicationName = "PDF漫画ビューアー"
 }
@@ -21,6 +23,34 @@ enum PageLayoutOverride: String, Codable, Sendable {
     case automatic
     case single
     case pairable
+}
+
+struct DocumentPreferences: Codable, Equatable, Sendable {
+    var lastPageIndex: Int
+    var binding: BindingDirection
+    var displayMode: DisplayMode
+    var alignment: PairingAlignment
+    var pageOverrides: [Int: PageLayoutOverride]
+
+    static let defaults = Self(
+        lastPageIndex: 0,
+        binding: .right,
+        displayMode: .spread,
+        alignment: .coverSingle,
+        pageOverrides: [:]
+    )
+}
+
+struct FileMetadata: Codable, Equatable, Sendable {
+    let size: Int64
+    let modificationDate: Date
+}
+
+struct DocumentRecord: Codable, Equatable, Sendable {
+    var bookmarkData: Data
+    var normalizedPath: String
+    var metadata: FileMetadata
+    var preferences: DocumentPreferences
 }
 
 struct PageGeometry: Equatable, Sendable {
