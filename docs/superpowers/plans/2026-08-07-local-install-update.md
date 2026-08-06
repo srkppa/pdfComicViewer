@@ -4,7 +4,7 @@
 
 **Goal:** 1コマンドでPDF漫画ビューアーをユーザー用Applicationsフォルダへ初回インストールまたは安全に更新し、READMEだけで利用方法が分かる状態にする。
 
-**Architecture:** `scripts/install-app.sh` が既存のReleaseビルドを呼び、アプリ終了と再起動を管理する。実際のファイル置換は `scripts/lib/install-app-bundle.sh` に分離し、一時ディレクトリを使う統合テストで初回配置・更新・失敗時保全・対象パス拒否を検証する。
+**Architecture:** `scripts/install-app.sh` が既存のReleaseビルドを呼び、アプリ終了と再起動を管理する。実際のファイル置換は `scripts/lib/install-app-bundle.sh` に分離し、一時ディレクトリを使う統合テストで初回配置・更新・ステージング失敗時の既存版保全・対象パス拒否を検証する。
 
 **Tech Stack:** zsh、macOS AppKitアプリバンドル、Swift Package Manager、XCTest、Git
 
@@ -29,7 +29,7 @@
 - Consumes: 第1引数に存在する `.app` の絶対パス、第2引数に親ディレクトリ名が `Applications` かつファイル名が `PDF漫画ビューアー.app` の絶対パス
 - Produces: `scripts/lib/install-app-bundle.sh <source-app> <destination-app>`。成功時0、入力不正・配置失敗時は非0を返す
 
-- [ ] **Step 1: 初回配置・更新・失敗時保全・危険なパス拒否の失敗テストを書く**
+- [ ] **Step 1: 初回配置・更新・ステージング失敗時の既存版保全・危険なパス拒否の失敗テストを書く**
 
 `Tests/InstallAppScriptTests/install-app-bundle-tests.sh` を作成する。テスト用ルートは `mktemp -d` で作り、終了時にその明示パスだけを削除する。
 
@@ -154,28 +154,14 @@ git commit -m "feat: install app bundles safely"
 
 **Files:**
 - Create: `scripts/install-app.sh`
-- Modify: `Tests/InstallAppScriptTests/install-app-bundle-tests.sh`
 
 **Interfaces:**
 - Consumes: `scripts/build-app.sh` が生成する `build/PDFComicViewer.app`、Task 1の `install-app-bundle.sh`
 - Produces: 引数なしの `scripts/install-app.sh`。成功時に `~/Applications/PDF漫画ビューアー.app` を起動する
 
-- [ ] **Step 1: インストールコマンドの前提を検査する失敗テストを追加する**
+- [ ] **Step 1: ビルド・通常終了・有限待機・配置・再起動を実装する**
 
-既存テスト末尾に、インストールコマンドが存在し、zshとして解釈できることを実行で確認する。
-
-```zsh
-INSTALL_COMMAND="$PROJECT_ROOT/scripts/install-app.sh"
-zsh -n "$INSTALL_COMMAND"
-```
-
-- [ ] **Step 2: テストを実行し、インストールコマンド未作成で失敗することを確認する**
-
-Run: `zsh Tests/InstallAppScriptTests/install-app-bundle-tests.sh`
-
-Expected: FAIL because `scripts/install-app.sh` does not exist
-
-- [ ] **Step 3: ビルド・通常終了・有限待機・配置・再起動を実装する**
+このファイルは既存のビルド、Task 1の配置処理、macOSの終了・起動コマンドだけを順に呼ぶ薄いオーケストレーションとする。テスト専用の分岐や環境変数は本番スクリプトへ追加せず、構文検査と実機での初回・更新確認を検証とする。
 
 `scripts/install-app.sh` を作成する。
 
@@ -208,7 +194,7 @@ open "$DESTINATION_APP"
 print -r -- "インストールしました: $DESTINATION_APP"
 ```
 
-- [ ] **Step 4: シェルテスト、構文検査、Swift全テストを実行する**
+- [ ] **Step 2: シェルテスト、構文検査、Swift全テストを実行する**
 
 Run: `zsh Tests/InstallAppScriptTests/install-app-bundle-tests.sh`
 
@@ -222,22 +208,22 @@ Run: `swift test`
 
 Expected: 104 tests plus any newly discovered tests, 0 failures
 
-- [ ] **Step 5: 実機の初回インストールを確認する**
+- [ ] **Step 3: 実機の初回インストールを確認する**
 
 Run: `scripts/install-app.sh`
 
 Expected: Releaseビルド後に `~/Applications/PDF漫画ビューアー.app` が存在し、そのパスのアプリが起動する
 
-- [ ] **Step 6: 同じコマンドによる更新を確認する**
+- [ ] **Step 4: 同じコマンドによる更新を確認する**
 
 Run: `scripts/install-app.sh`
 
 Expected: 実行中アプリが通常終了し、同じインストール先へ更新されたアプリが起動する
 
-- [ ] **Step 7: インストールコマンドをコミットする**
+- [ ] **Step 5: インストールコマンドをコミットする**
 
 ```bash
-git add scripts/install-app.sh Tests/InstallAppScriptTests/install-app-bundle-tests.sh
+git add scripts/install-app.sh
 git commit -m "feat: install and update the local app"
 ```
 
@@ -351,4 +337,3 @@ git remote add origin git@github.com:srkppa/pdfComicViewer.git
 Run: `git push -u origin main`
 
 Expected: `main -> main` と表示され、upstreamが `origin/main` に設定される
-
