@@ -86,6 +86,17 @@ final class ReaderViewModel: ObservableObject {
         fullScreenRequestSequence += 1
     }
 
+    @discardableResult
+    func openExternalURL(_ url: URL) async -> Bool {
+        guard url.isFileURL,
+              url.pathExtension.localizedCaseInsensitiveCompare("pdf") == .orderedSame else {
+            errorMessage = "PDFファイルを開いてください。"
+            return false
+        }
+        await open(url: url)
+        return true
+    }
+
     func open(url: URL) async {
         loadGeneration += 1
         let generation = loadGeneration

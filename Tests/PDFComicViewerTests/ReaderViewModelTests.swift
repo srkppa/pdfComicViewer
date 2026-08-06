@@ -107,6 +107,45 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testExternalFilePDFIsRoutedThroughDocumentLoader() async {
+        let url = URL(fileURLWithPath: "/tmp/external-comic.PDF")
+        let session = DocumentSession.fixture(pageCount: 3, url: url)
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+
+        let wasAccepted = await model.openExternalURL(url)
+
+        XCTAssertTrue(wasAccepted)
+        XCTAssertEqual(loader.openedURLs, [url])
+        XCTAssertTrue(model.session === session)
+    }
+
+    func testExternalNonFileURLIsRejectedBeforeDocumentLoader() async {
+        let url = URL(string: "https://example.com/comic.pdf")!
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 1)))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+
+        let wasAccepted = await model.openExternalURL(url)
+
+        XCTAssertFalse(wasAccepted)
+        XCTAssertTrue(loader.openedURLs.isEmpty)
+        XCTAssertNil(model.session)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
+    func testExternalNonPDFFileIsRejectedBeforeDocumentLoader() async {
+        let url = URL(fileURLWithPath: "/tmp/notes.txt")
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 1)))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+
+        let wasAccepted = await model.openExternalURL(url)
+
+        XCTAssertFalse(wasAccepted)
+        XCTAssertTrue(loader.openedURLs.isEmpty)
+        XCTAssertNil(model.session)
+        XCTAssertNotNil(model.errorMessage)
+    }
+
     func testPreviousAtFirstUnitStaysAtFirstPage() async {
         let (model, _) = await makeOpenedModel(pageCount: 4)
 

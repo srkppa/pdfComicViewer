@@ -8,6 +8,9 @@ struct PDFComicViewerApp: App {
         WindowGroup(AppConfiguration.applicationName) {
             ReaderView(model: model)
                 .frame(minWidth: 900, minHeight: 650)
+                .onOpenURL { url in
+                    Task { await model.openExternalURL(url) }
+                }
         }
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
