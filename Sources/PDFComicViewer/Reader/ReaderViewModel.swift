@@ -1,0 +1,277 @@
+import Foundation
+import SwiftUI
+
+@MainActor
+struct ReplacementConfirmation {
+    let record: DocumentRecord
+    let session: DocumentSession
+}
+
+@MainActor
+final class ReaderViewModel: ObservableObject {
+    @Published private(set) var session: DocumentSession?
+    @Published private(set) var displayUnits: [DisplayUnit] = []
+    @Published private(set) var currentUnitIndex = 0
+    @Published private(set) var currentPhysicalPage = 0
+    @Published private(set) var isLoading = false
+    @Published var passwordRequest: LockedPDFDocument?
+    @Published var replacementConfirmation: ReplacementConfirmation?
+    @Published var errorMessage: String?
+    @Published var warningMessage: String?
+    @Published var preferences = DocumentPreferences.defaults
+
+    private let loader: any PDFDocumentLoading
+    private let progressStore: any ReadingProgressStoring
+    private var saveTask: Task<Void, Never>?
+    private var pendingSave: (generation: Int, record: DocumentRecord)?
+    private var saveGeneration = 0
+    private var loadGeneration = 0
+
+    init(loader: any PDFDocumentLoading, progressStore: any ReadingProgressStoring) {
+        self.loader = loader
+        self.progressStore = progressStore
+    }
+
+    var currentUnit: DisplayUnit? {
+        guard displayUnits.indices.contains(currentUnitIndex) else { return nil }
+        return displayUnits[currentUnitIndex]
+    }
+
+    func open(url: URL) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        isLoading = true
+        errorMessage = nil
+        defer {
+            if generation == loadGeneration {
+                isLoading = false
+            }
+        }
+
+        do {
+            let result = try await loader.open(url: url)
+            guard generation == loadGeneration else { return }
+            switch result {
+            case .ready(let newSession):
+                try await receive(newSession, generation: generation)
+            case .passwordRequired(let locked):
+                passwordRequest = locked
+            }
+        } catch {
+            guard generation == loadGeneration else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func unlock(password: String) async {
+        guard let locked = passwordRequest else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        errorMessage = nil
+
+        do {
+            let unlockedSession = try loader.unlock(locked, password: password)
+            try await receive(unlockedSession, generation: generation)
+            guard generation == loadGeneration else { return }
+            passwordRequest = nil
+        } catch {
+            guard generation == loadGeneration else { return }
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func cancelUnlock() {
+        loadGeneration += 1
+        passwordRequest = nil
+        errorMessage = nil
+    }
+
+    func next() {
+        guard !displayUnits.isEmpty else { return }
+        let nextIndex = min(currentUnitIndex + 1, displayUnits.count - 1)
+        guard nextIndex != currentUnitIndex else { return }
+        currentUnitIndex = nextIndex
+        updateCurrentPageFromUnit()
+        scheduleSave()
+    }
+
+    func previous() {
+        guard !displayUnits.isEmpty else { return }
+        let previousIndex = max(currentUnitIndex - 1, 0)
+        guard previousIndex != currentUnitIndex else { return }
+        currentUnitIndex = previousIndex
+        updateCurrentPageFromUnit()
+        scheduleSave()
+    }
+
+    func setDisplayMode(_ mode: DisplayMode) {
+        guard preferences.displayMode != mode else { return }
+        preferences.displayMode = mode
+        rebuildKeepingCurrentPage()
+        scheduleSave()
+    }
+
+    func toggleAlignment() {
+        preferences.alignment = preferences.alignment == .coverSingle
+            ? .shifted
+            : .coverSingle
+        rebuildKeepingCurrentPage()
+        scheduleSave()
+    }
+
+    func setBinding(_ binding: BindingDirection) {
+        guard preferences.binding != binding else { return }
+        preferences.binding = binding
+        scheduleSave()
+    }
+
+    func setPageOverride(_ override: PageLayoutOverride, for pageIndex: Int) {
+        guard let session, session.pages.indices.contains(pageIndex) else { return }
+        preferences.pageOverrides[pageIndex] = override
+        rebuildKeepingCurrentPage()
+        scheduleSave()
+    }
+
+    func confirmReplacement(keepPreferences: Bool) async {
+        guard let confirmation = replacementConfirmation else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
+        let newPreferences = keepPreferences
+            ? confirmation.record.preferences
+            : .defaults
+        await flushPendingSave()
+        guard generation == loadGeneration else { return }
+        activate(confirmation.session, preferences: newPreferences)
+        scheduleSave()
+    }
+
+    private func receive(_ newSession: DocumentSession, generation: Int) async throws {
+        let record = try await progressStore.load(for: newSession.url)
+        guard generation == loadGeneration else { return }
+        if let record, record.metadata != newSession.metadata {
+            replacementConfirmation = ReplacementConfirmation(
+                record: record,
+                session: newSession
+            )
+            return
+        }
+        await flushPendingSave()
+        guard generation == loadGeneration else { return }
+        activate(newSession, preferences: record?.preferences ?? .defaults)
+    }
+
+    private func activate(
+        _ newSession: DocumentSession,
+        preferences newPreferences: DocumentPreferences
+    ) {
+        let page = clampedPage(newPreferences.lastPageIndex, in: newSession.pages)
+        session = newSession
+        passwordRequest = nil
+        replacementConfirmation = nil
+        preferences = newPreferences
+        preferences.lastPageIndex = page
+        currentPhysicalPage = page
+        displayUnits = SpreadBuilder.build(
+            pages: newSession.pages,
+            mode: preferences.displayMode,
+            alignment: preferences.alignment,
+            overrides: preferences.pageOverrides
+        )
+        currentUnitIndex = SpreadPresentation.unitIndex(
+            containing: page,
+            in: displayUnits
+        ) ?? 0
+    }
+
+    private func updateCurrentPageFromUnit() {
+        currentPhysicalPage = currentUnit?.anchorPage ?? 0
+        preferences.lastPageIndex = currentPhysicalPage
+    }
+
+    private func rebuildKeepingCurrentPage() {
+        guard let session else {
+            displayUnits = []
+            currentUnitIndex = 0
+            currentPhysicalPage = 0
+            return
+        }
+        let page = clampedPage(currentPhysicalPage, in: session.pages)
+        displayUnits = SpreadBuilder.build(
+            pages: session.pages,
+            mode: preferences.displayMode,
+            alignment: preferences.alignment,
+            overrides: preferences.pageOverrides
+        )
+        currentPhysicalPage = page
+        preferences.lastPageIndex = page
+        currentUnitIndex = SpreadPresentation.unitIndex(
+            containing: page,
+            in: displayUnits
+        ) ?? 0
+    }
+
+    private func clampedPage(_ page: Int, in pages: [PageGeometry]) -> Int {
+        guard !pages.isEmpty else { return 0 }
+        return min(max(page, 0), pages.count - 1)
+    }
+
+    private func scheduleSave() {
+        do {
+            guard let record = try currentRecord() else { return }
+            saveTask?.cancel()
+            saveGeneration += 1
+            let generation = saveGeneration
+            pendingSave = (generation, record)
+            saveTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .milliseconds(300))
+                    try Task.checkCancellation()
+                    await self?.persistPendingSave(generation: generation)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self?.warningMessage = "閲覧状態を保存できませんでした。"
+                }
+            }
+        } catch {
+            warningMessage = "閲覧状態を保存できませんでした。"
+        }
+    }
+
+    private func currentRecord() throws -> DocumentRecord? {
+        guard let session else { return nil }
+        return DocumentRecord(
+            bookmarkData: try DocumentBookmarkService.makeBookmark(for: session.url),
+            normalizedPath: session.url.standardizedFileURL.path,
+            metadata: session.metadata,
+            preferences: preferences
+        )
+    }
+
+    private func persistPendingSave(generation: Int) async {
+        guard let pendingSave, pendingSave.generation == generation else { return }
+        self.pendingSave = nil
+        saveTask = nil
+        await persist(pendingSave.record)
+    }
+
+    private func flushPendingSave() async {
+        guard let pendingSave else { return }
+        saveTask?.cancel()
+        saveTask = nil
+        self.pendingSave = nil
+        saveGeneration += 1
+        await persist(pendingSave.record)
+    }
+
+    private func persist(_ record: DocumentRecord) async {
+        do {
+            try await progressStore.save(record)
+            warningMessage = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            warningMessage = "閲覧状態を保存できませんでした。"
+        }
+    }
+}
