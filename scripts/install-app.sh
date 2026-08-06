@@ -3,9 +3,13 @@ set -euo pipefail
 
 PROJECT_ROOT="${0:A:h:h}"
 SOURCE_APP="$PROJECT_ROOT/build/PDFComicViewer.app"
-USER_APPLICATIONS_DIR="$HOME/Applications"
-DESTINATION_APP="$USER_APPLICATIONS_DIR/PDF漫画ビューアー.app"
 BUNDLE_ID="com.srkppa.PDFComicViewer"
+
+source "$PROJECT_ROOT/scripts/lib/install-path.sh"
+HOME_DIRECTORY="${HOME-}"
+DESTINATION_APP="$(validated_install_destination \
+    "$HOME_DIRECTORY" \
+    "$HOME_DIRECTORY/Applications/PDF漫画ビューアー.app")"
 
 "$PROJECT_ROOT/scripts/build-app.sh"
 

@@ -8,7 +8,9 @@ DESTINATION_APP="${2:-}"
     print -u2 -- "使い方: $0 <source-app> <destination-app>"
     exit 64
 }
-[[ "$SOURCE_APP" = /* && -d "$SOURCE_APP/Contents" ]] || {
+[[ "$SOURCE_APP" = /*
+    && "${SOURCE_APP:t}" == *.app
+    && -d "$SOURCE_APP/Contents" ]] || {
     print -u2 -- "有効なアプリバンドルではありません: $SOURCE_APP"
     exit 66
 }
@@ -18,6 +20,12 @@ DESTINATION_APP="${2:-}"
     print -u2 -- "安全でないインストール先を拒否しました: $DESTINATION_APP"
     exit 64
 }
+if [[ -e "$DESTINATION_APP" || -L "$DESTINATION_APP" ]]; then
+    [[ -d "$DESTINATION_APP/Contents" ]] || {
+        print -u2 -- "既存のインストール先が有効なアプリバンドルではありません: $DESTINATION_APP"
+        exit 66
+    }
+fi
 
 APPLICATIONS_DIR="${DESTINATION_APP:h}"
 mkdir -p "$APPLICATIONS_DIR"
@@ -27,15 +35,28 @@ BACKUP_APP="$STAGING_ROOT/previous.app"
 RESTORE_REQUIRED=false
 
 restore_previous_app() {
-    if [[ "$RESTORE_REQUIRED" == true && -d "$BACKUP_APP" && ! -e "$DESTINATION_APP" ]]; then
-        mv "$BACKUP_APP" "$DESTINATION_APP"
+    local exit_status=$?
+    trap - EXIT
+
+    if [[ "$RESTORE_REQUIRED" == true && ( -e "$BACKUP_APP" || -L "$BACKUP_APP" ) ]]; then
+        if [[ ! -e "$DESTINATION_APP" && ! -L "$DESTINATION_APP" ]] \
+            && mv "$BACKUP_APP" "$DESTINATION_APP"; then
+            RESTORE_REQUIRED=false
+        else
+            print -u2 -- "以前のアプリを復元できませんでした。バックアップを保持しています: $BACKUP_APP"
+        fi
     fi
-    rm -rf -- "$STAGING_ROOT"
+
+    if [[ "$RESTORE_REQUIRED" != true || ( ! -e "$BACKUP_APP" && ! -L "$BACKUP_APP" ) ]]; then
+        rm -rf -- "$STAGING_ROOT"
+    fi
+
+    exit "$exit_status"
 }
 trap restore_previous_app EXIT
 
 ditto "$SOURCE_APP" "$STAGED_APP"
-if [[ -e "$DESTINATION_APP" ]]; then
+if [[ -e "$DESTINATION_APP" || -L "$DESTINATION_APP" ]]; then
     mv "$DESTINATION_APP" "$BACKUP_APP"
     RESTORE_REQUIRED=true
 fi

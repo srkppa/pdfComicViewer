@@ -10,9 +10,14 @@ PDF漫画をmacOSで1ページ表示・見開き表示して読むためのネ�
 - PDFごとのページ位置・表示設定の保存
 - キーボード、クリック、ドラッグによる操作
 
+## 必要環境
+
+- macOS 15.0以降
+- Swift 6.0以降（インストール・更新・ソースからのテスト・ビルドに必要）
+
 ## インストール
 
-リポジトリのルートで次を実行します。
+リポジトリのルートで次を実行します。このコマンドはReleaseビルドを行ってからアプリを配置します。
 
 ```sh
 scripts/install-app.sh
@@ -29,11 +34,6 @@ scripts/install-app.sh
 ```sh
 scripts/install-app.sh
 ```
-
-## 必要環境
-
-- macOS 15.0以降
-- Swift 6.0以降（ソースからテスト・ビルドする場合）
 
 ## 基本操作
 
@@ -52,10 +52,11 @@ scripts/install-app.sh
 
 ## 開発者向け
 
-テストはリポジトリのルートで次を実行します。
+Swiftのテストとインストール処理のシェルテストは、リポジトリのルートで次を実行します。
 
 ```sh
 swift test
+zsh Tests/InstallAppScriptTests/install-app-bundle-tests.sh
 ```
 
 Releaseビルドのアプリバンドルを生成するには、次を実行します。
