@@ -569,7 +569,7 @@ func testLockedPDFRequestsPasswordAndUnlocks() async throws {
 
 - [ ] **ステップ3: テスト用PDF生成処理を作る**
 
-`CGDataConsumer`と`CGContext`を使い、指定された`mediaBox`ごとに空白ページを生成する。暗号化テストでは補助情報へ`kCGPDFContextUserPassword`と`kCGPDFContextOwnerPassword`を設定する。0ページのPDFと不正なバイト列も生成できるAPIにする。
+`CGDataConsumer`と`CGContext`を使い、指定された`mediaBox`ごとに空白ページを生成する。暗号化テストでは補助情報へ`kCGPDFContextUserPassword`と`kCGPDFContextOwnerPassword`を設定する。空バイトのファイルと不正なバイト列も生成できるAPIにする。
 
 ```swift
 enum PDFFixtureFactory {
@@ -606,7 +606,7 @@ protocol PDFDocumentLoading {
 }
 
 enum PDFLoaderError: LocalizedError {
-    case unreadableFile, invalidPDF, emptyPDF, incorrectPassword
+    case unreadableFile, invalidPDF, incorrectPassword
 }
 
 @MainActor
@@ -623,13 +623,13 @@ enum PDFOpenResult {
 }
 ```
 
-`open(url:)`では`Task.detached`内で`Data(contentsOf:options: .mappedIfSafe)`を実行し、メインアクターへ戻って`PDFDocument(data:)`を生成する。`isLocked`なら`.passwordRequired`、`pageCount == 0`なら`.emptyPDF`を返す。ページ寸法は`.cropBox`から取得し、32ページごとに`Task.yield()`してUIへ実行機会を返す。
+`open(url:)`では`Task.detached`内で`Data(contentsOf:options: .mappedIfSafe)`を実行し、メインアクターへ戻って`PDFDocument(data:)`を生成する。`PDFDocument(data:)`が失敗した場合と`pageCount == 0`の場合は`.invalidPDF`へ統合し、`isLocked`なら`.passwordRequired`を返す。ページ寸法は`.cropBox`から取得し、32ページごとに`Task.yield()`してUIへ実行機会を返す。
 
 - [ ] **ステップ5: ローダーテストと全テストを実行する**
 
 実行: `swift test --filter PDFDocumentLoaderTests && swift test`
 
-期待結果: 通常、縦横混在、空、不正、正しいパスワード、誤ったパスワードのテストが成功する。
+期待結果: 通常、縦横混在、空バイトと不正データの`.invalidPDF`、正しいパスワード、誤ったパスワードのテストが成功する。
 
 - [ ] **ステップ6: コミットする**
 
@@ -1059,7 +1059,7 @@ echo "$APP_PATH"
 5. ページ単位の自動・単独・見開き設定が反映される。
 6. 右綴じと左綴じで左右配置、矢印、クリック領域が反転する。
 7. 拡大、縮小、合わせる、パン、全画面が動作する。
-8. パスワード付き、空、破損PDFに日本語のエラーまたは入力画面が出る。
+8. パスワード付きPDFには入力画面、空または破損して開けないPDFには共通の日本語エラーが出る。
 9. アプリを終了して同じPDFを開くと、読書位置と設定が復元される。
 10. 数百ページのPDFを素早く送っても、遠いページのプレビューがキャッシュに残り続けない。
 
