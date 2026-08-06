@@ -62,6 +62,50 @@ final class PagePreviewRenderingTests: XCTestCase {
         XCTAssertNil(canvas.previewImage(for: 0))
     }
 
+    func testZoomRejectsDelayedPreviewUntilPlacementChanges() throws {
+        let url = try PDFFixtureFactory.makePDF(pageSizes: [
+            CGSize(width: 600, height: 900),
+            CGSize(width: 600, height: 900)
+        ])
+        defer { try? FileManager.default.removeItem(at: url) }
+        let document = try XCTUnwrap(PDFDocument(url: url))
+        let initialGeneration = PagePreviewGeneration(documentID: UUID(), sequence: 1)
+        let delayedGeneration = PagePreviewGeneration(
+            documentID: initialGeneration.documentID,
+            sequence: 2
+        )
+        let firstPlacement = PagePlacement(left: nil, right: nil, centered: 0)
+        let secondPlacement = PagePlacement(left: nil, right: nil, centered: 1)
+        let canvas = SpreadCanvasView(
+            document: document,
+            placement: firstPlacement,
+            previewImages: [:],
+            previewGeneration: initialGeneration,
+            previewRevision: 1
+        )
+
+        canvas.disablePreviewsForZoom()
+        canvas.update(
+            document: document,
+            placement: firstPlacement,
+            previewImages: [0: makeImage(gray: 127)],
+            previewGeneration: delayedGeneration,
+            previewRevision: 2
+        )
+
+        XCTAssertNil(canvas.previewImage(for: 0))
+
+        canvas.update(
+            document: document,
+            placement: secondPlacement,
+            previewImages: [1: makeImage(gray: 255)],
+            previewGeneration: delayedGeneration,
+            previewRevision: 3
+        )
+
+        XCTAssertNotNil(canvas.previewImage(for: 1))
+    }
+
     private func makeImage(gray: UInt8) -> CGImage {
         let colorSpace = CGColorSpaceCreateDeviceGray()
         let context = CGContext(

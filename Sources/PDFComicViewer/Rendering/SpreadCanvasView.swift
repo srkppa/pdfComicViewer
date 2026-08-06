@@ -13,6 +13,7 @@ final class SpreadCanvasView: NSView {
     private var previewGeneration: PagePreviewGeneration?
     private var previewRevision: Int
     private var discardedPreviewGeneration: PagePreviewGeneration?
+    private var previewsDisabledForCurrentPresentation = false
     private var usesPreviews = false
 
     init(
@@ -55,6 +56,8 @@ final class SpreadCanvasView: NSView {
             reloadPages()
             relayoutPages()
             discardPreviews()
+            previewsDisabledForCurrentPresentation = false
+            discardedPreviewGeneration = nil
         }
         guard self.previewGeneration != previewGeneration || self.previewRevision != previewRevision else {
             return
@@ -62,7 +65,9 @@ final class SpreadCanvasView: NSView {
         self.previewImages = previewImages
         self.previewGeneration = previewGeneration
         self.previewRevision = previewRevision
-        usesPreviews = !previewImages.isEmpty && previewGeneration != discardedPreviewGeneration
+        usesPreviews = !previewImages.isEmpty
+            && previewGeneration != discardedPreviewGeneration
+            && !previewsDisabledForCurrentPresentation
         needsDisplay = true
     }
 
@@ -106,6 +111,11 @@ final class SpreadCanvasView: NSView {
         usesPreviews = false
         previewImages = [:]
         needsDisplay = true
+    }
+
+    func disablePreviewsForZoom() {
+        previewsDisabledForCurrentPresentation = true
+        discardPreviews()
     }
 
     private func reloadPages() {

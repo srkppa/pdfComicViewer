@@ -59,10 +59,10 @@ struct PDFSpreadView: NSViewRepresentable {
             scrollView.magnification = 1
             canvas.relayout(to: scrollView.contentSize)
         case .zoomIn:
-            canvas.discardPreviews()
+            canvas.disablePreviewsForZoom()
             setMagnification(scrollView.magnification * 1.25, on: scrollView)
         case .zoomOut:
-            canvas.discardPreviews()
+            canvas.disablePreviewsForZoom()
             setMagnification(scrollView.magnification / 1.25, on: scrollView)
         }
     }
