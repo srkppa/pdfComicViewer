@@ -79,6 +79,33 @@ final class ReadingProgressStoreTests: XCTestCase {
         XCTAssertEqual(loaded, record)
     }
 
+    func testSaveAfterRenameReplacesRecordResolvedByOldBookmark() async throws {
+        let originalFile = temporaryDirectory.appending(path: "comic.pdf")
+        let movedFile = temporaryDirectory.appending(path: "renamed-comic.pdf")
+        try Data([0]).write(to: originalFile)
+        let original = makeRecord(
+            bookmarkData: try DocumentBookmarkService.makeBookmark(for: originalFile),
+            path: originalFile.standardizedFileURL.path,
+            lastPageIndex: 2
+        )
+        let store = FileReadingProgressStore(fileURL: progressFile)
+        try await store.save(original)
+        try FileManager.default.moveItem(at: originalFile, to: movedFile)
+        let latest = makeRecord(
+            bookmarkData: try DocumentBookmarkService.makeBookmark(for: movedFile),
+            path: movedFile.standardizedFileURL.path,
+            lastPageIndex: 9
+        )
+
+        try await store.save(latest)
+
+        let reloadedStore = FileReadingProgressStore(fileURL: progressFile)
+        let loaded = try await reloadedStore.load(for: movedFile)
+        let allRecords = try await reloadedStore.allRecords()
+        XCTAssertEqual(loaded, latest)
+        XCTAssertEqual(allRecords, [latest])
+    }
+
     private func makeRecord(
         bookmarkData: Data = Data(),
         path: String,

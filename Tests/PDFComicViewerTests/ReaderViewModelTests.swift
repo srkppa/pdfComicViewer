@@ -27,7 +27,40 @@ final class ReaderViewModelTests: XCTestCase {
 
         model.next()
 
-        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 2))
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 3))
+    }
+
+    func testOpeningAndRebuildingPresentationReturnZoomToFit() async {
+        let (model, _) = await makeOpenedModel(pageCount: 6, lastPageIndex: 2)
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 1))
+
+        model.zoomIn()
+        model.setDisplayMode(.single)
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 3))
+
+        model.zoomIn()
+        model.toggleAlignment()
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 5))
+
+        model.zoomIn()
+        model.setPageOverride(.single, for: 2)
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 7))
+    }
+
+    func testActivatingAnotherDocumentReturnsZoomToFit() async {
+        let first = DocumentSession.fixture(pageCount: 2)
+        let secondURL = URL(fileURLWithPath: "/tmp/second-comic.pdf")
+        let second = DocumentSession.fixture(pageCount: 2, url: secondURL)
+        let loader = FakePDFLoader(result: .ready(first))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: first.url)
+        model.zoomIn()
+        loader.result = .ready(second)
+
+        await model.open(url: secondURL)
+
+        XCTAssertTrue(model.session === second)
+        XCTAssertEqual(model.zoomCommand, ZoomCommand(action: .fit, sequence: 3))
     }
 
     func testOpeningAndTurningPagePublishCurrentPlacementPreviewSnapshot() async throws {
@@ -261,7 +294,7 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(savedRecord.preferences.lastPageIndex, 1)
     }
 
-    func testFailedSwitchFlushKeepsPendingProgressForNextOpenRetry() async throws {
+    func testFailedSwitchSaveDoesNotBlockNewDocumentAndRetriesBothDocuments() async throws {
         let firstURL = try makeTemporaryFileURL()
         let secondURL = try makeTemporaryFileURL()
         defer {
@@ -282,17 +315,28 @@ final class ReaderViewModelTests: XCTestCase {
 
         await model.open(url: secondURL)
 
-        XCTAssertTrue(model.session === first)
-        XCTAssertNotNil(model.warningMessage)
-        await store.setSaveError(nil)
-
-        await model.open(url: secondURL)
-
         XCTAssertTrue(model.session === second)
+        XCTAssertNotNil(model.warningMessage)
+
+        model.next()
+        await store.setSaveError(nil)
+        await model.flushPendingSaves()
+
         let savedRecords = await store.savedRecords
-        let retriedRecord = try XCTUnwrap(savedRecords.first)
-        XCTAssertEqual(retriedRecord.normalizedPath, firstURL.standardizedFileURL.path)
-        XCTAssertEqual(retriedRecord.preferences.lastPageIndex, 1)
+        XCTAssertEqual(Set(savedRecords.map(\.normalizedPath)), Set([
+            firstURL.standardizedFileURL.path,
+            secondURL.standardizedFileURL.path
+        ]))
+        XCTAssertEqual(
+            savedRecords.first { $0.normalizedPath == firstURL.standardizedFileURL.path }?
+                .preferences.lastPageIndex,
+            1
+        )
+        XCTAssertEqual(
+            savedRecords.first { $0.normalizedPath == secondURL.standardizedFileURL.path }?
+                .preferences.lastPageIndex,
+            1
+        )
     }
 
     func testOlderOpenCompletionCannotReplaceNewerDocument() async throws {
@@ -714,7 +758,10 @@ private final class FakePDFLoader: PDFDocumentLoading {
         return selectedResult
     }
 
-    func unlock(_ locked: LockedPDFDocument, password: String) throws -> DocumentSession {
+    func unlock(
+        _ locked: LockedPDFDocument,
+        password: String
+    ) async throws -> DocumentSession {
         unlockedPasswords.append(password)
         if let unlockError { throw unlockError }
         guard let unlockResult else { throw PDFLoaderError.incorrectPassword }
@@ -825,7 +872,7 @@ private extension LockedPDFDocument {
         url: URL,
         metadata: FileMetadata = .fixture
     ) -> LockedPDFDocument {
-        LockedPDFDocument(document: PDFDocument(), url: url, metadata: metadata)
+        LockedPDFDocument(data: Data(), url: url, metadata: metadata)
     }
 }
 

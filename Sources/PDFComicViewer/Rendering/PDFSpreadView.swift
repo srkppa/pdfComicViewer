@@ -58,6 +58,8 @@ struct PDFSpreadView: NSViewRepresentable {
         case .fit:
             scrollView.magnification = 1
             canvas.relayout(to: scrollView.contentSize)
+            scrollView.contentView.scroll(to: .zero)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
         case .zoomIn:
             canvas.disablePreviewsForZoom()
             setMagnification(scrollView.magnification * 1.25, on: scrollView)
@@ -89,10 +91,59 @@ struct PDFSpreadView: NSViewRepresentable {
 }
 
 @MainActor
-private final class SpreadScrollView: NSScrollView {
+final class SpreadScrollView: NSScrollView {
+    private struct DragSession {
+        let pointer: CGPoint
+        let clipOrigin: CGPoint
+    }
+
+    private var dragSession: DragSession?
+
     override func layout() {
         super.layout()
         guard let canvas = documentView as? SpreadCanvasView else { return }
         canvas.relayout(to: contentSize)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        beginPageDrag(at: event.locationInWindow)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        continuePageDrag(at: event.locationInWindow)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        endPageDrag()
+    }
+
+    func beginPageDrag(at windowLocation: CGPoint) {
+        dragSession = DragSession(
+            pointer: convert(windowLocation, from: nil),
+            clipOrigin: contentView.bounds.origin
+        )
+    }
+
+    func continuePageDrag(at windowLocation: CGPoint) {
+        guard let dragSession, let documentView else { return }
+        let clipSize = contentView.bounds.size
+        let documentBounds = documentView.bounds
+        let maximumOrigin = CGPoint(
+            x: documentBounds.maxX - clipSize.width,
+            y: documentBounds.maxY - clipSize.height
+        )
+        let origin = ReaderDragPan.origin(
+            startPointer: dragSession.pointer,
+            currentPointer: convert(windowLocation, from: nil),
+            startOrigin: dragSession.clipOrigin,
+            maximumOrigin: maximumOrigin,
+            magnification: magnification
+        )
+        contentView.scroll(to: origin)
+        reflectScrolledClipView(contentView)
+    }
+
+    func endPageDrag() {
+        dragSession = nil
     }
 }

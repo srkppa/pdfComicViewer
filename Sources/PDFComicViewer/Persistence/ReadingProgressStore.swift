@@ -47,7 +47,20 @@ actor FileReadingProgressStore: ReadingProgressStoring {
 
     func save(_ record: DocumentRecord) throws {
         var values = try loadRecords()
-        values.removeAll { $0.normalizedPath == record.normalizedPath }
+        let resolvedRecordURL = try? DocumentBookmarkService.resolve(record.bookmarkData)
+            .standardizedFileURL
+        values.removeAll { existing in
+            if existing.normalizedPath == record.normalizedPath {
+                return true
+            }
+            guard let resolvedRecordURL,
+                  let resolvedExistingURL = try? DocumentBookmarkService.resolve(
+                      existing.bookmarkData
+                  ).standardizedFileURL else {
+                return false
+            }
+            return resolvedExistingURL == resolvedRecordURL
+        }
         values.append(record)
 
         let data = try JSONEncoder().encode(values)

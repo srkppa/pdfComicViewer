@@ -1,10 +1,12 @@
+import CoreGraphics
+import Darwin
 import Foundation
 import PDFKit
 
 @MainActor
 protocol PDFDocumentLoading {
     func open(url: URL) async throws -> PDFOpenResult
-    func unlock(_ locked: LockedPDFDocument, password: String) throws -> DocumentSession
+    func unlock(_ locked: LockedPDFDocument, password: String) async throws -> DocumentSession
 }
 
 enum PDFLoaderError: LocalizedError {
@@ -26,9 +28,15 @@ enum PDFLoaderError: LocalizedError {
 
 @MainActor
 struct LockedPDFDocument {
-    let document: PDFDocument
+    fileprivate let data: Data
     let url: URL
     let metadata: FileMetadata
+
+    init(data: Data, url: URL, metadata: FileMetadata) {
+        self.data = data
+        self.url = url
+        self.metadata = metadata
+    }
 }
 
 @MainActor
@@ -37,83 +45,153 @@ enum PDFOpenResult {
     case passwordRequired(LockedPDFDocument)
 }
 
+enum PDFPageGeometry {
+    static func displayed(cropBox: CGRect, rotation: Int) -> PageGeometry {
+        let normalizedRotation = (rotation % 360 + 360) % 360
+        if normalizedRotation == 90 || normalizedRotation == 270 {
+            return PageGeometry(width: cropBox.height, height: cropBox.width)
+        }
+        return PageGeometry(width: cropBox.width, height: cropBox.height)
+    }
+}
+
 @MainActor
 struct PDFDocumentLoader: PDFDocumentLoading {
+    private let workerExecutionObserver: (@Sendable (Bool) -> Void)?
+
+    init(workerExecutionObserver: (@Sendable (Bool) -> Void)? = nil) {
+        self.workerExecutionObserver = workerExecutionObserver
+    }
+
     func open(url: URL) async throws -> PDFOpenResult {
-        let loadedFile = try await Task.detached(priority: .userInitiated) {
-            try LoadedPDFFile.read(from: url)
+        let observer = workerExecutionObserver
+        let loaded = try await Task.detached(priority: .userInitiated) {
+            observer?(pthread_main_np() != 0)
+            let file = try LoadedPDFFile.read(from: url)
+            let parsed = try PDFBackgroundParser.open(data: file.data)
+            return LoadedPDF(file: file, parsed: parsed)
         }.value
 
-        guard let document = PDFDocument(data: loadedFile.data) else {
-            throw PDFLoaderError.invalidPDF
-        }
-        if document.isLocked {
+        switch loaded.parsed {
+        case .locked:
             return .passwordRequired(
                 LockedPDFDocument(
-                    document: document,
+                    data: loaded.file.data,
                     url: url,
-                    metadata: loadedFile.metadata
+                    metadata: loaded.file.metadata
+                )
+            )
+        case .ready(let transferredDocument, let pages):
+            return .ready(
+                DocumentSession(
+                    document: transferredDocument.document,
+                    url: url,
+                    pages: pages,
+                    metadata: loaded.file.metadata
                 )
             )
         }
-        guard document.pageCount > 0 else {
-            throw PDFLoaderError.invalidPDF
-        }
-
-        let pages = try await pageGeometries(in: document)
-        return .ready(
-            DocumentSession(
-                document: document,
-                url: url,
-                pages: pages,
-                metadata: loadedFile.metadata
-            )
-        )
     }
 
-    func unlock(_ locked: LockedPDFDocument, password: String) throws -> DocumentSession {
-        guard locked.document.unlock(withPassword: password) else {
-            throw PDFLoaderError.incorrectPassword
-        }
-        guard locked.document.pageCount > 0 else {
-            throw PDFLoaderError.invalidPDF
-        }
-
+    func unlock(
+        _ locked: LockedPDFDocument,
+        password: String
+    ) async throws -> DocumentSession {
+        let data = locked.data
+        let observer = workerExecutionObserver
+        let parsed = try await Task.detached(priority: .userInitiated) {
+            observer?(pthread_main_np() != 0)
+            return try PDFBackgroundParser.unlock(data: data, password: password)
+        }.value
         return DocumentSession(
-            document: locked.document,
+            document: parsed.document.document,
             url: locked.url,
-            pages: try pageGeometriesSynchronously(in: locked.document),
+            pages: parsed.pages,
             metadata: locked.metadata
         )
     }
+}
 
-    private func pageGeometries(in document: PDFDocument) async throws -> [PageGeometry] {
-        var pages: [PageGeometry] = []
-        pages.reserveCapacity(document.pageCount)
+/// バックグラウンド解析完了後にPDFKit文書の所有権をMainActorへ一度だけ渡す箱。
+/// 解析側はこの箱を返した後に文書へ触れず、以後は表示側だけが利用する。
+private final class TransferredPDFDocument: @unchecked Sendable {
+    let document: PDFDocument
 
-        for index in 0..<document.pageCount {
-            guard let page = document.page(at: index) else {
-                throw PDFLoaderError.invalidPDF
-            }
-            let bounds = page.bounds(for: .cropBox)
-            pages.append(PageGeometry(width: bounds.width, height: bounds.height))
+    init(_ document: PDFDocument) {
+        self.document = document
+    }
+}
 
-            if (index + 1).isMultiple(of: 32) {
-                await Task.yield()
-            }
+private enum BackgroundPDFOpenResult: Sendable {
+    case locked
+    case ready(TransferredPDFDocument, [PageGeometry])
+}
+
+private struct BackgroundUnlockedPDF: Sendable {
+    let document: TransferredPDFDocument
+    let pages: [PageGeometry]
+}
+
+private struct LoadedPDF: Sendable {
+    let file: LoadedPDFFile
+    let parsed: BackgroundPDFOpenResult
+}
+
+private enum PDFBackgroundParser {
+    static func open(data: Data) throws -> BackgroundPDFOpenResult {
+        guard let document = PDFDocument(data: data) else {
+            throw PDFLoaderError.invalidPDF
         }
-        return pages
+        if document.isLocked {
+            return .locked
+        }
+        let pages = try pageGeometries(data: data, password: nil)
+        guard document.pageCount > 0, document.pageCount == pages.count else {
+            throw PDFLoaderError.invalidPDF
+        }
+        return .ready(TransferredPDFDocument(document), pages)
     }
 
-    private func pageGeometriesSynchronously(
-        in document: PDFDocument
+    static func unlock(data: Data, password: String) throws -> BackgroundUnlockedPDF {
+        guard let document = PDFDocument(data: data),
+              document.unlock(withPassword: password) else {
+            throw PDFLoaderError.incorrectPassword
+        }
+        let pages = try pageGeometries(data: data, password: password)
+        guard document.pageCount > 0, document.pageCount == pages.count else {
+            throw PDFLoaderError.invalidPDF
+        }
+        return BackgroundUnlockedPDF(
+            document: TransferredPDFDocument(document),
+            pages: pages
+        )
+    }
+
+    private static func pageGeometries(
+        data: Data,
+        password: String?
     ) throws -> [PageGeometry] {
-        try (0..<document.pageCount).map { index in
-            guard let page = document.page(at: index) else {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let document = CGPDFDocument(provider) else {
+            throw PDFLoaderError.invalidPDF
+        }
+        if document.isEncrypted {
+            guard let password, document.unlockWithPassword(password) else {
+                throw PDFLoaderError.incorrectPassword
+            }
+        }
+        guard document.isUnlocked, document.numberOfPages > 0 else {
+            throw PDFLoaderError.invalidPDF
+        }
+
+        return try (1...document.numberOfPages).map { pageNumber in
+            guard let page = document.page(at: pageNumber) else {
                 throw PDFLoaderError.invalidPDF
             }
-            let bounds = page.bounds(for: .cropBox)
-            return PageGeometry(width: bounds.width, height: bounds.height)
+            return PDFPageGeometry.displayed(
+                cropBox: page.getBoxRect(.cropBox),
+                rotation: Int(page.rotationAngle)
+            )
         }
     }
 }

@@ -67,6 +67,33 @@ enum ReaderInputMapping {
     }
 }
 
+enum ReaderDragPan {
+    static let activationDistance: CGFloat = 3
+
+    static func origin(
+        startPointer: CGPoint,
+        currentPointer: CGPoint,
+        startOrigin: CGPoint,
+        maximumOrigin: CGPoint,
+        magnification: CGFloat
+    ) -> CGPoint {
+        let distance = hypot(
+            currentPointer.x - startPointer.x,
+            currentPointer.y - startPointer.y
+        )
+        guard distance > activationDistance else { return startOrigin }
+        let scale = max(magnification, 1)
+        let proposed = CGPoint(
+            x: startOrigin.x - (currentPointer.x - startPointer.x) / scale,
+            y: startOrigin.y - (currentPointer.y - startPointer.y) / scale
+        )
+        return CGPoint(
+            x: min(max(proposed.x, 0), max(maximumOrigin.x, 0)),
+            y: min(max(proposed.y, 0), max(maximumOrigin.y, 0))
+        )
+    }
+}
+
 @MainActor
 struct ReaderInputMonitor: NSViewRepresentable {
     let binding: BindingDirection

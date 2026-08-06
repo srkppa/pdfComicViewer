@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 @MainActor
 struct ReaderView: View {
     @ObservedObject var model: ReaderViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var fileImporterIsPresented = false
     @State private var replacementPromptIsPresented = false
@@ -114,6 +115,10 @@ struct ReaderView: View {
         }
         .onDisappear {
             hideControlsTask?.cancel()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            Task { await model.flushPendingSaves() }
         }
     }
 

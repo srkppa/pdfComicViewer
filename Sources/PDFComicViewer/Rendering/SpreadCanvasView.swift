@@ -42,6 +42,22 @@ final class SpreadCanvasView: NSView {
 
     override var isOpaque: Bool { true }
 
+    override func mouseDown(with event: NSEvent) {
+        (enclosingScrollView as? SpreadScrollView)?.beginPageDrag(
+            at: event.locationInWindow
+        )
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        (enclosingScrollView as? SpreadScrollView)?.continuePageDrag(
+            at: event.locationInWindow
+        )
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        (enclosingScrollView as? SpreadScrollView)?.endPageDrag()
+    }
+
     func update(
         document: PDFDocument,
         placement: PagePlacement,

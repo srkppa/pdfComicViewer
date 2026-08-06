@@ -29,7 +29,7 @@ final class ReaderViewModel: ObservableObject {
     private let pagePreviewCache = PagePreviewCache()
     private var saveTask: Task<Void, Never>?
     private var pagePreviewTask: Task<Void, Never>?
-    private var pendingSave: (generation: Int, record: DocumentRecord)?
+    private var dirtyRecords: [String: (generation: Int, record: DocumentRecord)] = [:]
     private var saveGeneration = 0
     private var loadGeneration = 0
     private var openGeneration = 0
@@ -133,7 +133,7 @@ final class ReaderViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let unlockedSession = try loader.unlock(locked, password: password)
+            let unlockedSession = try await loader.unlock(locked, password: password)
             try await receive(unlockedSession, generation: generation)
             guard generation == loadGeneration else { return }
             passwordRequest = nil
@@ -189,6 +189,7 @@ final class ReaderViewModel: ObservableObject {
     func setBinding(_ binding: BindingDirection) {
         guard preferences.binding != binding else { return }
         preferences.binding = binding
+        fitToWindow()
         scheduleSave()
     }
 
@@ -206,7 +207,7 @@ final class ReaderViewModel: ObservableObject {
         let newPreferences = keepPreferences
             ? confirmation.record.preferences
             : .defaults
-        guard await flushPendingSave() else { return }
+        await persistDirtyRecords()
         guard generation == loadGeneration else { return }
         activate(confirmation.session, preferences: newPreferences)
         scheduleSave()
@@ -223,7 +224,7 @@ final class ReaderViewModel: ObservableObject {
             )
             return
         }
-        guard await flushPendingSave() else { return }
+        await persistDirtyRecords()
         guard generation == loadGeneration else { return }
         activate(newSession, preferences: record?.preferences ?? .defaults)
     }
@@ -252,6 +253,7 @@ final class ReaderViewModel: ObservableObject {
             in: displayUnits
         ) ?? 0
         schedulePagePreviews()
+        fitToWindow()
     }
 
     private func updateCurrentPageFromUnit() {
@@ -281,6 +283,7 @@ final class ReaderViewModel: ObservableObject {
             in: displayUnits
         ) ?? 0
         schedulePagePreviews()
+        fitToWindow()
     }
 
     private func schedulePagePreviews() {
@@ -386,12 +389,14 @@ final class ReaderViewModel: ObservableObject {
             saveTask?.cancel()
             saveGeneration += 1
             let generation = saveGeneration
-            pendingSave = (generation, record)
+            dirtyRecords[record.normalizedPath] = (generation, record)
             saveTask = Task { [weak self] in
                 do {
                     try await Task.sleep(for: .milliseconds(300))
                     try Task.checkCancellation()
-                    await self?.persistPendingSave(generation: generation)
+                    guard let self, generation == self.saveGeneration else { return }
+                    self.saveTask = nil
+                    await self.persistDirtyRecords()
                 } catch is CancellationError {
                     return
                 } catch {
@@ -413,38 +418,36 @@ final class ReaderViewModel: ObservableObject {
         )
     }
 
-    private func persistPendingSave(generation: Int) async {
-        guard let pendingSave, pendingSave.generation == generation else { return }
-        saveTask = nil
-        let didSave = await persist(pendingSave.record)
-        if didSave, self.pendingSave?.generation == generation {
-            self.pendingSave = nil
-        }
-    }
-
-    private func flushPendingSave() async -> Bool {
-        guard let pendingSave else { return true }
+    func flushPendingSaves() async {
         saveTask?.cancel()
         saveTask = nil
-        saveGeneration += 1
-        let didSave = await persist(pendingSave.record)
-        if didSave, self.pendingSave?.generation == pendingSave.generation {
-            self.pendingSave = nil
-        }
-        return didSave
-    }
-
-    private func persist(_ record: DocumentRecord) async -> Bool {
         do {
-            try await progressStore.save(record)
-            warningMessage = nil
-            return true
-        } catch is CancellationError {
-            warningMessage = "閲覧状態を保存できませんでした。"
-            return false
+            if let record = try currentRecord() {
+                saveGeneration += 1
+                dirtyRecords[record.normalizedPath] = (saveGeneration, record)
+            }
         } catch {
             warningMessage = "閲覧状態を保存できませんでした。"
-            return false
         }
+        await persistDirtyRecords()
+    }
+
+    private func persistDirtyRecords() async {
+        guard !dirtyRecords.isEmpty else { return }
+        var failed = false
+        let records = dirtyRecords.values.sorted {
+            $0.generation < $1.generation
+        }
+        for pending in records {
+            do {
+                try await progressStore.save(pending.record)
+                if dirtyRecords[pending.record.normalizedPath]?.generation == pending.generation {
+                    dirtyRecords[pending.record.normalizedPath] = nil
+                }
+            } catch {
+                failed = true
+            }
+        }
+        warningMessage = failed ? "閲覧状態を保存できませんでした。" : nil
     }
 }

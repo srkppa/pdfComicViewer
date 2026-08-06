@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import PDFKit
 
 enum PDFFixtureFactoryError: Error {
     case couldNotCreateConsumer
@@ -10,6 +11,7 @@ enum PDFFixtureFactory {
     static func makePDF(
         pageSizes: [CGSize],
         cropBoxes: [CGRect]? = nil,
+        rotations: [Int]? = nil,
         password: String? = nil
     ) throws -> URL {
         let url = temporaryURL()
@@ -51,6 +53,17 @@ enum PDFFixtureFactory {
         }
 
         context.closePDF()
+        if let rotations {
+            guard let document = PDFDocument(url: url) else {
+                throw PDFFixtureFactoryError.couldNotCreateContext
+            }
+            for (index, rotation) in rotations.enumerated() {
+                document.page(at: index)?.rotation = rotation
+            }
+            guard document.write(to: url) else {
+                throw PDFFixtureFactoryError.couldNotCreateContext
+            }
+        }
         return url
     }
 

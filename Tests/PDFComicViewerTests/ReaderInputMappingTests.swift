@@ -3,6 +3,56 @@ import XCTest
 @testable import PDFComicViewer
 
 final class ReaderInputMappingTests: XCTestCase {
+    func testDragPanKeepsClickJitterStationaryAndPansAfterThreshold() {
+        let start = CGPoint(x: 100, y: 100)
+        let origin = CGPoint(x: 40, y: 60)
+        let limits = CGPoint(x: 300, y: 200)
+
+        XCTAssertEqual(
+            ReaderDragPan.origin(
+                startPointer: start,
+                currentPointer: CGPoint(x: 102, y: 101),
+                startOrigin: origin,
+                maximumOrigin: limits,
+                magnification: 2
+            ),
+            origin
+        )
+        XCTAssertEqual(
+            ReaderDragPan.origin(
+                startPointer: start,
+                currentPointer: CGPoint(x: 80, y: 60),
+                startOrigin: origin,
+                maximumOrigin: limits,
+                magnification: 2
+            ),
+            CGPoint(x: 50, y: 80)
+        )
+    }
+
+    func testDragPanConstrainsOriginToScrollableBounds() {
+        XCTAssertEqual(
+            ReaderDragPan.origin(
+                startPointer: .zero,
+                currentPointer: CGPoint(x: 100, y: 100),
+                startOrigin: CGPoint(x: 10, y: 20),
+                maximumOrigin: CGPoint(x: 200, y: 300),
+                magnification: 1
+            ),
+            .zero
+        )
+        XCTAssertEqual(
+            ReaderDragPan.origin(
+                startPointer: .zero,
+                currentPointer: CGPoint(x: -500, y: -500),
+                startOrigin: CGPoint(x: 10, y: 20),
+                maximumOrigin: CGPoint(x: 200, y: 300),
+                magnification: 1
+            ),
+            CGPoint(x: 200, y: 300)
+        )
+    }
+
     func testReaderKeysAreHandledWhenCanvasHasKeyboardFocus() {
         XCTAssertTrue(
             ReaderInputMapping.shouldHandleReaderKey(

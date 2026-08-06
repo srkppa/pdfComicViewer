@@ -1,8 +1,59 @@
+import AppKit
 import SwiftUI
+
+@MainActor
+final class ApplicationTerminationCoordinator {
+    enum Decision: Equatable {
+        case later
+    }
+
+    private var terminationTask: Task<Void, Never>?
+
+    func requestTermination(
+        flush: @escaping @MainActor () async -> Void,
+        reply: @escaping @MainActor (Bool) -> Void
+    ) -> Decision {
+        guard terminationTask == nil else { return .later }
+        terminationTask = Task { @MainActor [weak self] in
+            await flush()
+            guard let self, self.terminationTask != nil else { return }
+            self.terminationTask = nil
+            reply(true)
+        }
+        return .later
+    }
+}
+
+@MainActor
+private enum AppServices {
+    static let readerModel = ReaderViewModel.live()
+}
+
+@MainActor
+final class PDFComicViewerAppDelegate: NSObject, NSApplicationDelegate {
+    private let terminationCoordinator = ApplicationTerminationCoordinator()
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        _ = terminationCoordinator.requestTermination(
+            flush: {
+                await AppServices.readerModel.flushPendingSaves()
+            },
+            reply: { shouldTerminate in
+                sender.reply(toApplicationShouldTerminate: shouldTerminate)
+            }
+        )
+        return .terminateLater
+    }
+}
 
 @main
 struct PDFComicViewerApp: App {
-    @StateObject private var model = ReaderViewModel.live()
+    @NSApplicationDelegateAdaptor(PDFComicViewerAppDelegate.self) private var appDelegate
+    @StateObject private var model: ReaderViewModel
+
+    init() {
+        _model = StateObject(wrappedValue: AppServices.readerModel)
+    }
 
     var body: some Scene {
         WindowGroup(AppConfiguration.applicationName) {
