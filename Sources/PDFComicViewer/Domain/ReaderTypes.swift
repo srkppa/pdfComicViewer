@@ -12,6 +12,11 @@ enum PairingAlignment: String, Codable, Sendable {
     case shifted
 }
 
+enum BindingDirection: String, Codable, Sendable {
+    case right
+    case left
+}
+
 enum PageLayoutOverride: String, Codable, Sendable {
     case automatic
     case single
@@ -26,6 +31,12 @@ struct PageGeometry: Equatable, Sendable {
 enum DisplayUnit: Equatable, Sendable {
     case single(Int)
     case pair(Int, Int)
+}
+
+struct PagePlacement: Equatable, Sendable {
+    let left: Int?
+    let right: Int?
+    let centered: Int?
 }
 
 extension DisplayUnit {
