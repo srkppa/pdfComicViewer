@@ -26,6 +26,7 @@ final class ReaderViewModel: ObservableObject {
     private var pendingSave: (generation: Int, record: DocumentRecord)?
     private var saveGeneration = 0
     private var loadGeneration = 0
+    private var openGeneration = 0
 
     init(loader: any PDFDocumentLoading, progressStore: any ReadingProgressStoring) {
         self.loader = loader
@@ -40,10 +41,12 @@ final class ReaderViewModel: ObservableObject {
     func open(url: URL) async {
         loadGeneration += 1
         let generation = loadGeneration
+        openGeneration += 1
+        let openToken = openGeneration
         isLoading = true
         errorMessage = nil
         defer {
-            if generation == loadGeneration {
+            if openToken == openGeneration {
                 isLoading = false
             }
         }
@@ -55,6 +58,7 @@ final class ReaderViewModel: ObservableObject {
             case .ready(let newSession):
                 try await receive(newSession, generation: generation)
             case .passwordRequired(let locked):
+                replacementConfirmation = nil
                 passwordRequest = locked
             }
         } catch {
@@ -139,7 +143,7 @@ final class ReaderViewModel: ObservableObject {
         let newPreferences = keepPreferences
             ? confirmation.record.preferences
             : .defaults
-        await flushPendingSave()
+        guard await flushPendingSave() else { return }
         guard generation == loadGeneration else { return }
         activate(confirmation.session, preferences: newPreferences)
         scheduleSave()
@@ -149,13 +153,14 @@ final class ReaderViewModel: ObservableObject {
         let record = try await progressStore.load(for: newSession.url)
         guard generation == loadGeneration else { return }
         if let record, record.metadata != newSession.metadata {
+            passwordRequest = nil
             replacementConfirmation = ReplacementConfirmation(
                 record: record,
                 session: newSession
             )
             return
         }
-        await flushPendingSave()
+        guard await flushPendingSave() else { return }
         guard generation == loadGeneration else { return }
         activate(newSession, preferences: record?.preferences ?? .defaults)
     }
@@ -250,28 +255,36 @@ final class ReaderViewModel: ObservableObject {
 
     private func persistPendingSave(generation: Int) async {
         guard let pendingSave, pendingSave.generation == generation else { return }
-        self.pendingSave = nil
         saveTask = nil
-        await persist(pendingSave.record)
+        let didSave = await persist(pendingSave.record)
+        if didSave, self.pendingSave?.generation == generation {
+            self.pendingSave = nil
+        }
     }
 
-    private func flushPendingSave() async {
-        guard let pendingSave else { return }
+    private func flushPendingSave() async -> Bool {
+        guard let pendingSave else { return true }
         saveTask?.cancel()
         saveTask = nil
-        self.pendingSave = nil
         saveGeneration += 1
-        await persist(pendingSave.record)
+        let didSave = await persist(pendingSave.record)
+        if didSave, self.pendingSave?.generation == pendingSave.generation {
+            self.pendingSave = nil
+        }
+        return didSave
     }
 
-    private func persist(_ record: DocumentRecord) async {
+    private func persist(_ record: DocumentRecord) async -> Bool {
         do {
             try await progressStore.save(record)
             warningMessage = nil
+            return true
         } catch is CancellationError {
-            return
+            warningMessage = "閲覧状態を保存できませんでした。"
+            return false
         } catch {
             warningMessage = "閲覧状態を保存できませんでした。"
+            return false
         }
     }
 }

@@ -169,6 +169,40 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(savedRecord.preferences.lastPageIndex, 1)
     }
 
+    func testFailedSwitchFlushKeepsPendingProgressForNextOpenRetry() async throws {
+        let firstURL = try makeTemporaryFileURL()
+        let secondURL = try makeTemporaryFileURL()
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+        let first = DocumentSession.fixture(pageCount: 4, url: firstURL)
+        let second = DocumentSession.fixture(pageCount: 4, url: secondURL)
+        let loader = FakePDFLoader(result: .ready(first))
+        let store = FakeProgressStore(
+            record: .fixture(url: firstURL, metadata: first.metadata)
+        )
+        let model = ReaderViewModel(loader: loader, progressStore: store)
+        await model.open(url: firstURL)
+        model.next()
+        await store.setSaveError(TestError.saveFailed)
+        loader.result = .ready(second)
+
+        await model.open(url: secondURL)
+
+        XCTAssertTrue(model.session === first)
+        XCTAssertNotNil(model.warningMessage)
+        await store.setSaveError(nil)
+
+        await model.open(url: secondURL)
+
+        XCTAssertTrue(model.session === second)
+        let savedRecords = await store.savedRecords
+        let retriedRecord = try XCTUnwrap(savedRecords.first)
+        XCTAssertEqual(retriedRecord.normalizedPath, firstURL.standardizedFileURL.path)
+        XCTAssertEqual(retriedRecord.preferences.lastPageIndex, 1)
+    }
+
     func testOlderOpenCompletionCannotReplaceNewerDocument() async throws {
         let olderURL = URL(fileURLWithPath: "/tmp/older.pdf")
         let newerURL = URL(fileURLWithPath: "/tmp/newer.pdf")
@@ -245,6 +279,67 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    func testPasswordResultClearsOlderReplacementConfirmation() async throws {
+        let replacementURL = try makeTemporaryFileURL()
+        let lockedURL = try makeTemporaryFileURL()
+        defer {
+            try? FileManager.default.removeItem(at: replacementURL)
+            try? FileManager.default.removeItem(at: lockedURL)
+        }
+        let replacement = DocumentSession.fixture(
+            pageCount: 2,
+            url: replacementURL,
+            metadata: FileMetadata(size: 2_048, modificationDate: .fixtureDate)
+        )
+        let locked = LockedPDFDocument.fixture(url: lockedURL)
+        let loader = FakePDFLoader(result: .ready(replacement))
+        let store = FakeProgressStore(
+            record: .fixture(url: replacementURL, metadata: .fixture)
+        )
+        let model = ReaderViewModel(loader: loader, progressStore: store)
+        await model.open(url: replacementURL)
+        XCTAssertNotNil(model.replacementConfirmation)
+        loader.result = .passwordRequired(locked)
+
+        await model.open(url: lockedURL)
+
+        XCTAssertNil(model.replacementConfirmation)
+        XCTAssertEqual(model.passwordRequest?.url, lockedURL)
+        await model.confirmReplacement(keepPreferences: true)
+        XCTAssertNil(model.session)
+    }
+
+    func testReplacementResultClearsOlderPasswordRequest() async throws {
+        let lockedURL = try makeTemporaryFileURL()
+        let replacementURL = try makeTemporaryFileURL()
+        defer {
+            try? FileManager.default.removeItem(at: lockedURL)
+            try? FileManager.default.removeItem(at: replacementURL)
+        }
+        let locked = LockedPDFDocument.fixture(url: lockedURL)
+        let unlocked = DocumentSession.fixture(pageCount: 2, url: lockedURL)
+        let replacement = DocumentSession.fixture(
+            pageCount: 4,
+            url: replacementURL,
+            metadata: FileMetadata(size: 2_048, modificationDate: .fixtureDate)
+        )
+        let loader = FakePDFLoader(result: .passwordRequired(locked))
+        loader.unlockResult = unlocked
+        let store = FakeProgressStore()
+        let model = ReaderViewModel(loader: loader, progressStore: store)
+        await model.open(url: lockedURL)
+        XCTAssertNotNil(model.passwordRequest)
+        await store.setRecord(.fixture(url: replacementURL, metadata: .fixture))
+        loader.result = .ready(replacement)
+
+        await model.open(url: replacementURL)
+
+        XCTAssertNil(model.passwordRequest)
+        XCTAssertTrue(model.replacementConfirmation?.session === replacement)
+        await model.unlock(password: "stale")
+        XCTAssertNil(model.session)
+    }
+
     func testCancelUnlockKeepsCurrentDocument() async {
         let current = DocumentSession.fixture(pageCount: 4)
         let lockedURL = URL(fileURLWithPath: "/tmp/locked.pdf")
@@ -259,6 +354,77 @@ final class ReaderViewModelTests: XCTestCase {
 
         XCTAssertTrue(model.session === current)
         XCTAssertNil(model.passwordRequest)
+    }
+
+    func testUnlockDuringOpenEventuallyClearsLoading() async throws {
+        let lockedURL = URL(fileURLWithPath: "/tmp/unlock-loading.pdf")
+        let slowURL = URL(fileURLWithPath: "/tmp/slow-after-unlock.pdf")
+        let locked = LockedPDFDocument.fixture(url: lockedURL)
+        let unlocked = DocumentSession.fixture(pageCount: 2, url: lockedURL)
+        let slow = DocumentSession.fixture(pageCount: 2, url: slowURL)
+        let loader = FakePDFLoader(result: .passwordRequired(locked))
+        loader.unlockResult = unlocked
+        loader.resultsByURL[slowURL] = .ready(slow)
+        loader.delaysByURL[slowURL] = .milliseconds(100)
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: lockedURL)
+
+        let slowOpen = Task { await model.open(url: slowURL) }
+        try await waitUntil { model.isLoading }
+        await model.unlock(password: "secret")
+        await slowOpen.value
+
+        XCTAssertFalse(model.isLoading)
+        XCTAssertTrue(model.session === unlocked)
+    }
+
+    func testCancelUnlockDuringOpenEventuallyClearsLoading() async throws {
+        let lockedURL = URL(fileURLWithPath: "/tmp/cancel-loading.pdf")
+        let slowURL = URL(fileURLWithPath: "/tmp/slow-after-cancel.pdf")
+        let locked = LockedPDFDocument.fixture(url: lockedURL)
+        let slow = DocumentSession.fixture(pageCount: 2, url: slowURL)
+        let loader = FakePDFLoader(result: .passwordRequired(locked))
+        loader.resultsByURL[slowURL] = .ready(slow)
+        loader.delaysByURL[slowURL] = .milliseconds(100)
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: lockedURL)
+
+        let slowOpen = Task { await model.open(url: slowURL) }
+        try await waitUntil { model.isLoading }
+        model.cancelUnlock()
+        await slowOpen.value
+
+        XCTAssertFalse(model.isLoading)
+        XCTAssertNil(model.passwordRequest)
+        XCTAssertNil(model.session)
+    }
+
+    func testConfirmReplacementDuringOpenEventuallyClearsLoading() async throws {
+        let replacementURL = try makeTemporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: replacementURL) }
+        let slowURL = URL(fileURLWithPath: "/tmp/slow-after-confirm.pdf")
+        let replacement = DocumentSession.fixture(
+            pageCount: 2,
+            url: replacementURL,
+            metadata: FileMetadata(size: 2_048, modificationDate: .fixtureDate)
+        )
+        let slow = DocumentSession.fixture(pageCount: 2, url: slowURL)
+        let loader = FakePDFLoader(result: .ready(replacement))
+        loader.resultsByURL[slowURL] = .ready(slow)
+        loader.delaysByURL[slowURL] = .milliseconds(100)
+        let store = FakeProgressStore(
+            record: .fixture(url: replacementURL, metadata: .fixture)
+        )
+        let model = ReaderViewModel(loader: loader, progressStore: store)
+        await model.open(url: replacementURL)
+
+        let slowOpen = Task { await model.open(url: slowURL) }
+        try await waitUntil { model.isLoading }
+        await model.confirmReplacement(keepPreferences: true)
+        await slowOpen.value
+
+        XCTAssertFalse(model.isLoading)
+        XCTAssertTrue(model.session === replacement)
     }
 
     func testMetadataSizeMismatchDefersReplacementAndKeepsCurrentDocument() async throws {
