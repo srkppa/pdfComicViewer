@@ -69,6 +69,17 @@ struct PagePlacement: Equatable, Sendable {
     let centered: Int?
 }
 
+struct ZoomCommand: Equatable, Sendable {
+    enum Action: Sendable {
+        case fit
+        case zoomIn
+        case zoomOut
+    }
+
+    let action: Action
+    let sequence: Int
+}
+
 extension DisplayUnit {
     var pageIndexes: [Int] {
         switch self {
