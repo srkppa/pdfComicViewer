@@ -1,5 +1,4 @@
 import CoreGraphics
-import PDFKit
 import XCTest
 @testable import PDFComicViewer
 
@@ -61,17 +60,16 @@ final class PDFDocumentLoaderTests: XCTestCase {
         )
     }
 
-    func testEmptyPDFIsRejected() async throws {
-        let url = try PDFFixtureFactory.makePDF(pageSizes: [])
+    func testEmptyFileIsRejectedAsInvalidPDF() async throws {
+        let url = try PDFFixtureFactory.makeEmptyFile()
         defer { try? FileManager.default.removeItem(at: url) }
-        let loader = PDFDocumentLoader(documentFactory: { _ in PDFDocument() })
 
         do {
-            _ = try await loader.open(url: url)
-            XCTFail("emptyPDFを期待")
-        } catch PDFLoaderError.emptyPDF {
+            _ = try await PDFDocumentLoader().open(url: url)
+            XCTFail("invalidPDFを期待")
+        } catch PDFLoaderError.invalidPDF {
         } catch {
-            XCTFail("emptyPDFを期待、実際は\(error)")
+            XCTFail("invalidPDFを期待、実際は\(error)")
         }
     }
 

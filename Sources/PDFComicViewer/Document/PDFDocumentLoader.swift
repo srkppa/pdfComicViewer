@@ -10,7 +10,6 @@ protocol PDFDocumentLoading {
 enum PDFLoaderError: LocalizedError {
     case unreadableFile
     case invalidPDF
-    case emptyPDF
     case incorrectPassword
 
     var errorDescription: String? {
@@ -19,8 +18,6 @@ enum PDFLoaderError: LocalizedError {
             "PDFファイルを読み込めません。"
         case .invalidPDF:
             "有効なPDFファイルではありません。"
-        case .emptyPDF:
-            "PDFにページがありません。"
         case .incorrectPassword:
             "パスワードが正しくありません。"
         }
@@ -42,22 +39,12 @@ enum PDFOpenResult {
 
 @MainActor
 struct PDFDocumentLoader: PDFDocumentLoading {
-    private let documentFactory: @MainActor (Data) -> PDFDocument?
-
-    init(
-        documentFactory: @escaping @MainActor (Data) -> PDFDocument? = {
-            PDFDocument(data: $0)
-        }
-    ) {
-        self.documentFactory = documentFactory
-    }
-
     func open(url: URL) async throws -> PDFOpenResult {
         let loadedFile = try await Task.detached(priority: .userInitiated) {
             try LoadedPDFFile.read(from: url)
         }.value
 
-        guard let document = documentFactory(loadedFile.data) else {
+        guard let document = PDFDocument(data: loadedFile.data) else {
             throw PDFLoaderError.invalidPDF
         }
         if document.isLocked {
@@ -70,7 +57,7 @@ struct PDFDocumentLoader: PDFDocumentLoading {
             )
         }
         guard document.pageCount > 0 else {
-            throw PDFLoaderError.emptyPDF
+            throw PDFLoaderError.invalidPDF
         }
 
         let pages = try await pageGeometries(in: document)
@@ -89,7 +76,7 @@ struct PDFDocumentLoader: PDFDocumentLoading {
             throw PDFLoaderError.incorrectPassword
         }
         guard locked.document.pageCount > 0 else {
-            throw PDFLoaderError.emptyPDF
+            throw PDFLoaderError.invalidPDF
         }
 
         return DocumentSession(

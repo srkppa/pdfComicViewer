@@ -67,6 +67,12 @@ enum PDFFixtureFactory {
         return url
     }
 
+    static func makeEmptyFile() throws -> URL {
+        let url = temporaryURL()
+        try Data().write(to: url)
+        return url
+    }
+
     private static func temporaryURL() -> URL {
         FileManager.default.temporaryDirectory
             .appending(path: "PDFDocumentLoaderTests-\(UUID().uuidString).pdf")
