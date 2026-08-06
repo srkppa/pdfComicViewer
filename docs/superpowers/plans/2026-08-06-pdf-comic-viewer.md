@@ -57,7 +57,7 @@ scripts/build-app.sh                   # releaseビルドを.appへ組み立て�
 
 ---
 
-### タスク1: Swift Packageとアプリの骨格
+### Task 1: Swift Packageとアプリの骨格
 
 **ファイル:**
 - 作成: `Package.swift`
@@ -143,7 +143,7 @@ git commit -m "chore: scaffold macOS comic viewer"
 
 ---
 
-### タスク2: ページの組み立て規則
+### Task 2: ページの組み立て規則
 
 **ファイル:**
 - 変更: `Sources/PDFComicViewer/Domain/ReaderTypes.swift`
@@ -275,7 +275,7 @@ git commit -m "feat: add comic spread grouping"
 
 ---
 
-### タスク3: 左右配置と現在ページの維持
+### Task 3: 左右配置と現在ページの維持
 
 **ファイル:**
 - 変更: `Sources/PDFComicViewer/Domain/ReaderTypes.swift`
@@ -363,7 +363,7 @@ git commit -m "feat: map spreads to binding direction"
 
 ---
 
-### タスク4: PDFごとの設定保存
+### Task 4: PDFごとの設定保存
 
 **ファイル:**
 - 変更: `Sources/PDFComicViewer/Domain/ReaderTypes.swift`
@@ -527,7 +527,7 @@ git commit -m "feat: persist per-document reading state"
 
 ---
 
-### タスク5: PDFの読み込み、ページ情報、パスワード解除
+### Task 5: PDFの読み込み、ページ情報、パスワード解除
 
 **ファイル:**
 - 作成: `Sources/PDFComicViewer/Document/DocumentSession.swift`
@@ -640,7 +640,7 @@ git commit -m "feat: load and unlock local PDF documents"
 
 ---
 
-### タスク6: 閲覧状態と操作の調整
+### Task 6: 閲覧状態と操作の調整
 
 **ファイル:**
 - 作成: `Sources/PDFComicViewer/Reader/ReaderViewModel.swift`
@@ -750,7 +750,7 @@ git commit -m "feat: coordinate comic reader state"
 
 ---
 
-### タスク7: 見開きレイアウトとベクター描画
+### Task 7: 見開きレイアウトとベクター描画
 
 **ファイル:**
 - 作成: `Sources/PDFComicViewer/Rendering/SpreadLayoutCalculator.swift`
@@ -855,7 +855,7 @@ git commit -m "feat: render single pages and comic spreads"
 
 ---
 
-### タスク8: 閲覧画面、ファイル操作、入力操作
+### Task 8: 閲覧画面、ファイル操作、入力操作
 
 **ファイル:**
 - 作成: `Sources/PDFComicViewer/UI/ReaderView.swift`
@@ -942,7 +942,7 @@ git commit -m "feat: add macOS comic reader interface"
 
 ---
 
-### タスク9: 前後ページの先読みとキャッシュ上限
+### Task 9: 前後ページの先読みとキャッシュ上限
 
 **ファイル:**
 - 作成: `Sources/PDFComicViewer/Rendering/PagePreviewCache.swift`
@@ -1006,7 +1006,7 @@ git commit -m "perf: bound neighboring page preview cache"
 
 ---
 
-### タスク10: `.app`生成と受け入れ確認
+### Task 10: `.app`生成と受け入れ確認
 
 **ファイル:**
 - 作成: `Resources/Info.plist`
