@@ -25,11 +25,14 @@ final class ReaderViewModel: ObservableObject {
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
+    private let pagePreviewCache = PagePreviewCache()
     private var saveTask: Task<Void, Never>?
+    private var pagePreviewTask: Task<Void, Never>?
     private var pendingSave: (generation: Int, record: DocumentRecord)?
     private var saveGeneration = 0
     private var loadGeneration = 0
     private var openGeneration = 0
+    private var pagePreviewGeneration = 0
 
     init(loader: any PDFDocumentLoading, progressStore: any ReadingProgressStoring) {
         self.loader = loader
@@ -138,6 +141,7 @@ final class ReaderViewModel: ObservableObject {
         guard nextIndex != currentUnitIndex else { return }
         currentUnitIndex = nextIndex
         updateCurrentPageFromUnit()
+        schedulePagePreviews()
         fitToWindow()
         scheduleSave()
     }
@@ -148,6 +152,7 @@ final class ReaderViewModel: ObservableObject {
         guard previousIndex != currentUnitIndex else { return }
         currentUnitIndex = previousIndex
         updateCurrentPageFromUnit()
+        schedulePagePreviews()
         fitToWindow()
         scheduleSave()
     }
@@ -230,6 +235,7 @@ final class ReaderViewModel: ObservableObject {
             containing: page,
             in: displayUnits
         ) ?? 0
+        schedulePagePreviews(resetCache: true)
     }
 
     private func updateCurrentPageFromUnit() {
@@ -242,6 +248,7 @@ final class ReaderViewModel: ObservableObject {
             displayUnits = []
             currentUnitIndex = 0
             currentPhysicalPage = 0
+            schedulePagePreviews()
             return
         }
         let page = clampedPage(currentPhysicalPage, in: session.pages)
@@ -257,6 +264,57 @@ final class ReaderViewModel: ObservableObject {
             containing: page,
             in: displayUnits
         ) ?? 0
+        schedulePagePreviews()
+    }
+
+    private func schedulePagePreviews(resetCache: Bool = false) {
+        pagePreviewTask?.cancel()
+        pagePreviewGeneration += 1
+        let generation = pagePreviewGeneration
+        pagePreviewTask = Task { [weak self] in
+            guard let self else { return }
+            let retainedIndexes = self.previewPageIndexes()
+            let cache = self.pagePreviewCache
+
+            if resetCache {
+                await cache.retainOnly([])
+            } else {
+                await cache.retainOnly(retainedIndexes)
+            }
+
+            guard !Task.isCancelled,
+                  generation == self.pagePreviewGeneration,
+                  let session = self.session else {
+                return
+            }
+
+            for pageIndex in retainedIndexes {
+                guard !Task.isCancelled, generation == self.pagePreviewGeneration else {
+                    return
+                }
+                if await cache.image(for: pageIndex) != nil {
+                    continue
+                }
+                guard let page = session.document.page(at: pageIndex),
+                      let image = PagePreviewRenderer.render(
+                          page: page,
+                          maxSize: CGSize(width: 1_024, height: 1_024)
+                      ) else {
+                    continue
+                }
+                guard !Task.isCancelled, generation == self.pagePreviewGeneration else {
+                    return
+                }
+                await cache.insert(image, for: pageIndex)
+            }
+        }
+    }
+
+    private func previewPageIndexes() -> Set<Int> {
+        guard !displayUnits.isEmpty else { return [] }
+        let firstIndex = max(currentUnitIndex - 1, 0)
+        let lastIndex = min(currentUnitIndex + 1, displayUnits.count - 1)
+        return Set(displayUnits[firstIndex...lastIndex].flatMap(\.pageIndexes))
     }
 
     private func clampedPage(_ page: Int, in pages: [PageGeometry]) -> Int {
