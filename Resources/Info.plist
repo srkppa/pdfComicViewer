@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>PDF漫画ビューアー</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.srkppa.PDFComicViewer</string>
+	<key>CFBundleExecutable</key>
+	<string>PDFComicViewer</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF書類</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
