@@ -24,16 +24,15 @@ struct DirectorySidebarView: View {
         HStack(spacing: 8) {
             Button(action: hideSidebar) {
                 Image(systemName: "sidebar.left")
+                    .frame(width: 20, height: 20)
             }
             .buttonStyle(.plain)
             .foregroundStyle(ReaderTheme.primaryText)
+            .contentShape(Rectangle())
             .accessibilityLabel("サイドバーを隠す")
             .help("サイドバーを隠す（⌘B）")
             .nativeToolTip("サイドバーを隠す（⌘B）")
 
-            Image(systemName: "folder")
-                .foregroundStyle(ReaderTheme.secondaryText)
-                .accessibilityHidden(true)
             Text(model.rootURL?.lastPathComponent ?? "フォルダ未選択")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(ReaderTheme.primaryText)
@@ -41,9 +40,11 @@ struct DirectorySidebarView: View {
             Spacer()
             Button(action: chooseFolder) {
                 Image(systemName: "folder")
+                    .frame(width: 20, height: 20)
             }
             .buttonStyle(.plain)
             .foregroundStyle(ReaderTheme.primaryText)
+            .contentShape(Rectangle())
             .accessibilityLabel("フォルダを選択")
             .help("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
             .nativeToolTip("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
