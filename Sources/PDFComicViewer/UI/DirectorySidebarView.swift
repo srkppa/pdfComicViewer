@@ -1,0 +1,106 @@
+import SwiftUI
+
+@MainActor
+struct DirectorySidebarView: View {
+    @ObservedObject var model: DirectorySidebarViewModel
+    let currentFileURL: URL?
+    let chooseFolder: () -> Void
+    let openPDF: (URL) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            content
+        }
+        .frame(maxHeight: .infinity)
+        .background(ReaderTheme.surface)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "folder")
+                .foregroundStyle(ReaderTheme.secondaryText)
+                .accessibilityHidden(true)
+            Text(model.rootURL?.lastPathComponent ?? "フォルダ未選択")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(ReaderTheme.primaryText)
+                .lineLimit(1)
+            Spacer()
+            Button(action: chooseFolder) {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ReaderTheme.primaryText)
+            .accessibilityLabel("フォルダを選択")
+            .help("フォルダを選択")
+        }
+        .padding(10)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if model.rootURL == nil {
+            emptyRootState
+        } else if model.isLoading && model.nodes.isEmpty {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let errorMessage = model.errorMessage {
+            Text(errorMessage)
+                .font(.callout)
+                .foregroundStyle(ReaderTheme.secondaryText)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else if model.nodes.isEmpty {
+            Text("PDFが見つかりません")
+                .font(.callout)
+                .foregroundStyle(ReaderTheme.secondaryText)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            List(model.nodes, children: \.children) { node in
+                row(for: node)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func row(for node: DirectoryTreeNode) -> some View {
+        let isCurrent = node.kind == .pdf
+            && node.url.standardizedFileURL == currentFileURL?.standardizedFileURL
+        return HStack(spacing: 6) {
+            Image(systemName: node.kind == .folder ? "folder" : "doc.richtext")
+                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.secondaryText)
+                .accessibilityHidden(true)
+            Text(node.name)
+                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
+                .fontWeight(isCurrent ? .semibold : .regular)
+                .lineLimit(1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard node.kind == .pdf else { return }
+            openPDF(node.url)
+        }
+        .accessibilityLabel(node.name)
+        .accessibilityAddTraits(node.kind == .pdf ? .isButton : [])
+    }
+
+    private var emptyRootState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(ReaderTheme.secondaryText)
+                .accessibilityHidden(true)
+            Text("フォルダを選ぶと\nPDFの一覧を表示します")
+                .multilineTextAlignment(.center)
+                .font(.callout)
+                .foregroundStyle(ReaderTheme.secondaryText)
+            Button("フォルダを選択…", action: chooseFolder)
+                .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
+    }
+}
