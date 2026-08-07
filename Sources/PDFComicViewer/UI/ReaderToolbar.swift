@@ -82,6 +82,7 @@ struct ReaderToolbar: View {
             .frame(width: 142)
             .accessibilityLabel("ページの表示方法")
             .help("1ページ表示と見開き表示を切り替えます（1 / 2 キー）")
+            .nativeToolTip("1ページ表示と見開き表示を切り替えます（1 / 2 キー）")
             .disabled(model.session == nil)
             .focused($focusedControl, equals: .displayMode)
 
@@ -169,7 +170,8 @@ struct ReaderToolbar: View {
         shortcut: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let helpText = shortcut.map { "\(title)（\($0)）" } ?? title
+        return Button(action: action) {
             Image(systemName: systemImage)
                 .frame(width: 20, height: 20)
         }
@@ -177,7 +179,37 @@ struct ReaderToolbar: View {
         .foregroundStyle(ReaderTheme.primaryText)
         .contentShape(Rectangle())
         .accessibilityLabel(title)
-        .help(shortcut.map { "\(title)（\($0)）" } ?? title)
+        .help(helpText)
+        // principal placementのカスタムツールバー内ではSwiftUIの`.help()`だけでは
+        // ツールチップが表示されないことがあるため、AppKitの`NSView.toolTip`で補う。
+        .nativeToolTip(helpText)
+    }
+}
+
+/// クリックを妨げずにAppKitの`NSView.toolTip`を重ねるための透明なオーバーレイ。
+private final class PassthroughToolTipView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private struct ToolTipOverlay: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = PassthroughToolTipView()
+        view.toolTip = text
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        nsView.toolTip = text
+    }
+}
+
+extension View {
+    /// SwiftUIの`.help()`が反映されない箇所（カスタムツールバー内など）向けに、
+    /// AppKitのツールチップ機構を直接使ってホバー時の説明文を表示する。
+    fileprivate func nativeToolTip(_ text: String) -> some View {
+        overlay(ToolTipOverlay(text: text))
     }
 }
 
@@ -218,6 +250,7 @@ private struct BindingDirectionButton: View {
             model.preferences.binding == .right ? "右綴じ。左綴じに変更" : "左綴じ。右綴じに変更"
         )
         .help("漫画の綴じ方向を切り替えます")
+        .nativeToolTip("漫画の綴じ方向を切り替えます")
     }
 }
 
