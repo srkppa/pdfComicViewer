@@ -26,9 +26,10 @@ struct DirectorySidebarView: View {
                 Image(systemName: "sidebar.left")
             }
             .buttonStyle(.plain)
-            .foregroundStyle(ReaderTheme.secondaryText)
+            .foregroundStyle(ReaderTheme.primaryText)
             .accessibilityLabel("サイドバーを隠す")
-            .help("サイドバーを隠す")
+            .help("サイドバーを隠す（⌘B）")
+            .nativeToolTip("サイドバーを隠す（⌘B）")
 
             Image(systemName: "folder")
                 .foregroundStyle(ReaderTheme.secondaryText)
@@ -45,6 +46,7 @@ struct DirectorySidebarView: View {
             .foregroundStyle(ReaderTheme.primaryText)
             .accessibilityLabel("フォルダを選択")
             .help("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
+            .nativeToolTip("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
         }
         .padding(10)
     }
