@@ -123,7 +123,7 @@ struct ReaderToolbar: View {
 
             iconButton(
                 sidebarIsVisible ? "フォルダ一覧を隠す" : "フォルダ一覧を表示",
-                systemImage: "sidebar.right",
+                systemImage: "sidebar.left",
                 action: { sidebarIsVisible.toggle() }
             )
             .focused($focusedControl, equals: .sidebar)

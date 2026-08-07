@@ -21,6 +21,18 @@ struct ReaderView: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            if sidebarIsVisible, !isFullScreen {
+                DirectorySidebarView(
+                    model: sidebarModel,
+                    currentFileURL: model.session?.url,
+                    chooseFolder: { folderImporterIsPresented = true },
+                    openPDF: { url in Task { await model.open(url: url) } }
+                )
+                .frame(width: 260)
+                .transition(.move(edge: .leading).combined(with: .opacity))
+                Divider()
+            }
+
             ZStack {
                 ReaderTheme.canvas.ignoresSafeArea()
 
@@ -52,24 +64,6 @@ struct ReaderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            if sidebarIsVisible, !isFullScreen {
-                Divider()
-                DirectorySidebarView(
-                    model: sidebarModel,
-                    currentFileURL: model.session?.url,
-                    chooseFolder: { folderImporterIsPresented = true },
-                    openPDF: { url in Task { await model.open(url: url) } }
-                )
-                .frame(width: 260)
-                .fileImporter(
-                    isPresented: $folderImporterIsPresented,
-                    allowedContentTypes: [.folder],
-                    allowsMultipleSelection: false,
-                    onCompletion: handleFolderImport
-                )
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
         }
         .animation(.easeInOut(duration: 0.18), value: sidebarIsVisible)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -95,6 +89,12 @@ struct ReaderView: View {
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
+        )
+        .fileImporter(
+            isPresented: $folderImporterIsPresented,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false,
+            onCompletion: handleFolderImport
         )
         .dropDestination(for: URL.self) { urls, _ in
             openDroppedPDF(from: urls)
