@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleName</key>
 	<string>PDF漫画ビューアー</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.srkppa.PDFComicViewer</string>
 	<key>CFBundleExecutable</key>

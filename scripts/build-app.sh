@@ -17,6 +17,7 @@ STAGED_APP_PATH="$STAGING_ROOT/PDFComicViewer.app"
 mkdir -p "$STAGED_APP_PATH/Contents/MacOS" "$STAGED_APP_PATH/Contents/Resources"
 cp "$BIN_PATH/PDFComicViewer" "$STAGED_APP_PATH/Contents/MacOS/PDFComicViewer"
 cp "$PROJECT_ROOT/Resources/Info.plist" "$STAGED_APP_PATH/Contents/Info.plist"
+cp "$PROJECT_ROOT/Resources/AppIcon.icns" "$STAGED_APP_PATH/Contents/Resources/AppIcon.icns"
 
 if [[ "$APP_PATH" != "$PROJECT_ROOT/build/PDFComicViewer.app" ]]; then
     echo "安全でない出力先を拒否しました: $APP_PATH" >&2
