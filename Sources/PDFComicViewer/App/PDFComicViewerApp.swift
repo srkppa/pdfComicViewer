@@ -80,6 +80,11 @@ struct ReaderCommands: Commands {
                 model.requestFileOpen()
             }
             .keyboardShortcut("o", modifiers: .command)
+
+            Button("PDFを閉じる") {
+                Task { await model.closeDocument() }
+            }
+            .disabled(model.session == nil)
         }
 
         CommandGroup(after: .toolbar) {
