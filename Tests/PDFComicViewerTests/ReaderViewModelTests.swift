@@ -718,6 +718,36 @@ final class ReaderViewModelTests: XCTestCase {
         return url
     }
 
+    func testCloseDocumentFlushesSaveAndResetsState() async throws {
+        let url = try makeTemporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (model, store) = await makeOpenedModel(pageCount: 4, url: url)
+        model.next()
+
+        await model.closeDocument()
+
+        XCTAssertNil(model.session)
+        XCTAssertEqual(model.currentPhysicalPage, 0)
+        XCTAssertTrue(model.displayUnits.isEmpty)
+        let savedRecords = await store.savedRecords
+        XCTAssertEqual(savedRecords.count, 1)
+        XCTAssertEqual(savedRecords[0].preferences.lastPageIndex, 1)
+    }
+
+    func testCloseDocumentWithNoOpenDocumentIsNoOp() async {
+        let store = FakeProgressStore()
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 1))),
+            progressStore: store
+        )
+
+        await model.closeDocument()
+
+        XCTAssertNil(model.session)
+        let savedRecords = await store.savedRecords
+        XCTAssertTrue(savedRecords.isEmpty)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool

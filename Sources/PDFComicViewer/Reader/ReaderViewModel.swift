@@ -213,6 +213,20 @@ final class ReaderViewModel: ObservableObject {
         scheduleSave()
     }
 
+    func closeDocument() async {
+        guard session != nil else { return }
+        await flushPendingSaves()
+        session = nil
+        passwordRequest = nil
+        replacementConfirmation = nil
+        errorMessage = nil
+        warningMessage = nil
+        pagePreviewTask?.cancel()
+        pagePreviewDocumentID = UUID()
+        pagePreviewSnapshot = .empty
+        rebuildKeepingCurrentPage()
+    }
+
     private func receive(_ newSession: DocumentSession, generation: Int) async throws {
         let record = try await progressStore.load(for: newSession.url)
         guard generation == loadGeneration else { return }
