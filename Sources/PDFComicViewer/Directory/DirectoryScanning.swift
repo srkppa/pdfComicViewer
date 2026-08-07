@@ -17,12 +17,18 @@ enum DirectoryScanError: LocalizedError {
 
 struct DirectoryScanner: DirectoryScanning {
     func scan(rootURL: URL) async throws -> [DirectoryTreeNode] {
-        try await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             try Self.scanChildren(of: rootURL)
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private static func scanChildren(of url: URL) throws -> [DirectoryTreeNode] {
+        try Task.checkCancellation()
         let fileManager = FileManager.default
         let contents: [URL]
         do {

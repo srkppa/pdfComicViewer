@@ -748,6 +748,41 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertTrue(savedRecords.isEmpty)
     }
 
+    func testClosingDocumentDuringInFlightOpenPreventsStaleActivation() async throws {
+        let firstURL = try makeTemporaryFileURL()
+        let secondURL = try makeTemporaryFileURL()
+        defer {
+            try? FileManager.default.removeItem(at: firstURL)
+            try? FileManager.default.removeItem(at: secondURL)
+        }
+        let first = DocumentSession.fixture(pageCount: 2, url: firstURL)
+        let second = DocumentSession.fixture(pageCount: 2, url: secondURL)
+        let loader = FakePDFLoader(result: .ready(first))
+        loader.resultsByURL = [firstURL: .ready(first), secondURL: .ready(second)]
+        loader.delaysByURL = [secondURL: .milliseconds(100)]
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: firstURL)
+
+        let secondOpen = Task { await model.open(url: secondURL) }
+        try await Task.sleep(for: .milliseconds(10))
+        await model.closeDocument()
+        await secondOpen.value
+
+        XCTAssertNil(model.session)
+    }
+
+    func testCloseDocumentPreservesSaveFailureWarning() async throws {
+        let url = try makeTemporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (model, store) = await makeOpenedModel(pageCount: 4, url: url)
+        model.next()
+        await store.setSaveError(TestError.saveFailed)
+
+        await model.closeDocument()
+
+        XCTAssertNotNil(model.warningMessage)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool

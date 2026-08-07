@@ -215,12 +215,13 @@ final class ReaderViewModel: ObservableObject {
 
     func closeDocument() async {
         guard session != nil else { return }
+        loadGeneration += 1
+        errorMessage = nil
+        warningMessage = nil
         await flushPendingSaves()
         session = nil
         passwordRequest = nil
         replacementConfirmation = nil
-        errorMessage = nil
-        warningMessage = nil
         pagePreviewTask?.cancel()
         pagePreviewDocumentID = UUID()
         pagePreviewSnapshot = .empty

@@ -22,7 +22,7 @@ final class DirectorySidebarViewModel: ObservableObject {
         reload()
     }
 
-    private func reload() {
+    func reload() {
         guard let rootURL else { return }
         scanTask?.cancel()
         scanGeneration += 1

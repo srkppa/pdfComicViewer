@@ -62,6 +62,12 @@ struct ReaderView: View {
                     openPDF: { url in Task { await model.open(url: url) } }
                 )
                 .frame(width: 260)
+                .fileImporter(
+                    isPresented: $folderImporterIsPresented,
+                    allowedContentTypes: [.folder],
+                    allowsMultipleSelection: false,
+                    onCompletion: handleFolderImport
+                )
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
@@ -89,12 +95,6 @@ struct ReaderView: View {
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
-        )
-        .fileImporter(
-            isPresented: $folderImporterIsPresented,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false,
-            onCompletion: handleFolderImport
         )
         .dropDestination(for: URL.self) { urls, _ in
             openDroppedPDF(from: urls)
@@ -142,7 +142,12 @@ struct ReaderView: View {
         }
         .onChange(of: model.session?.url) { _, newURL in
             guard let newURL else { return }
-            sidebarModel.setRoot(newURL.deletingLastPathComponent())
+            let parent = newURL.deletingLastPathComponent().standardizedFileURL
+            if let root = sidebarModel.rootURL,
+               parent.path == root.path || parent.path.hasPrefix(root.path + "/") {
+                return
+            }
+            sidebarModel.setRoot(parent)
         }
         .onChange(of: sidebarModel.rootURL) { oldValue, newValue in
             guard oldValue == nil, newValue != nil else { return }
@@ -353,7 +358,11 @@ struct ReaderView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            sidebarModel.setRoot(url)
+            if sidebarModel.rootURL == url.standardizedFileURL {
+                sidebarModel.reload()
+            } else {
+                sidebarModel.setRoot(url)
+            }
         case .failure(let error):
             guard (error as NSError).code != NSUserCancelledError else { return }
             sidebarModel.errorMessage = "フォルダを選択できませんでした。"

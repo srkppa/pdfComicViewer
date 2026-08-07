@@ -60,6 +60,60 @@ final class DirectoryScannerTests: XCTestCase {
         XCTAssertEqual(nodes.first { $0.name == "restricted" }?.children, [])
     }
 
+    func testScanExcludesSymlinksAndDoesNotRecurseIntoCycles() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try makeFile(named: "real.pdf", in: root)
+        let subfolder = try makeDirectory(named: "sub", in: root)
+        // Symlink inside `sub` pointing back up at `root`, which would recurse
+        // forever if the scanner ever descended into it.
+        let cycleLink = subfolder.appending(path: "cycle-back-to-root")
+        try FileManager.default.createSymbolicLink(at: cycleLink, withDestinationURL: root)
+
+        let nodes = try await DirectoryScanner().scan(rootURL: root)
+
+        XCTAssertEqual(nodes.map(\.name), ["sub", "real.pdf"])
+        let subNode = try XCTUnwrap(nodes.first { $0.name == "sub" })
+        XCTAssertEqual(subNode.children, [])
+    }
+
+    func testScanStopsPromptlyWhenCancelled() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Build a moderately deep/wide tree so an uncancelled scan would take
+        // measurably longer than a cancelled one.
+        var current = root
+        for depth in 0..<50 {
+            current = try makeDirectory(named: "level-\(depth)", in: current)
+            for fileIndex in 0..<20 {
+                try makeFile(named: "file-\(fileIndex).pdf", in: current)
+            }
+        }
+
+        let scanner = DirectoryScanner()
+
+        let baselineClock = ContinuousClock()
+        let baselineStart = baselineClock.now
+        _ = try await scanner.scan(rootURL: root)
+        let uncancelledDuration = baselineClock.now - baselineStart
+
+        let cancelledClock = ContinuousClock()
+        let cancelledStart = cancelledClock.now
+        let task = Task { try await scanner.scan(rootURL: root) }
+        task.cancel()
+        do {
+            _ = try await task.value
+        } catch is CancellationError {
+            // Expected outcome when cancellation is observed promptly.
+        }
+        let cancelledDuration = cancelledClock.now - cancelledStart
+
+        // A promptly-cancelled scan should complete in a small fraction of the
+        // time an uncancelled full walk takes, proving the walk actually
+        // stopped early rather than running to completion regardless.
+        XCTAssertLessThan(cancelledDuration, uncancelledDuration / 2)
+    }
+
     private func makeTemporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "DirectoryScannerTests-\(UUID().uuidString)")

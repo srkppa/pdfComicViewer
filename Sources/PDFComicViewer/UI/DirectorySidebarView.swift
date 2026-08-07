@@ -99,6 +99,12 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(ReaderTheme.secondaryText)
             Button("フォルダを選択…", action: chooseFolder)
                 .buttonStyle(.bordered)
+            if let errorMessage = model.errorMessage {
+                Text(errorMessage)
+                    .multilineTextAlignment(.center)
+                    .font(.callout)
+                    .foregroundStyle(ReaderTheme.secondaryText)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(20)

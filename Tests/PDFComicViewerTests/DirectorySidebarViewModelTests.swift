@@ -68,6 +68,20 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(model.nodes, [secondNode])
     }
 
+    func testReloadRescansCurrentRoot() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = DirectorySidebarViewModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        model.reload()
+        try await waitUntil { model.isLoading == false }
+
+        let scannedRoots = await scanner.scannedRootURLs
+        XCTAssertEqual(scannedRoots.count, 2)
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool
