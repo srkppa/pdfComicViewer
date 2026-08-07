@@ -57,6 +57,7 @@ struct ReaderToolbar: View {
             iconButton(
                 "PDFを開く",
                 systemImage: "doc.badge.plus",
+                shortcut: "⌘O",
                 action: model.requestFileOpen
             )
             .focused($focusedControl, equals: .open)
@@ -80,13 +81,14 @@ struct ReaderToolbar: View {
             .pickerStyle(.segmented)
             .frame(width: 142)
             .accessibilityLabel("ページの表示方法")
-            .help("1ページ表示と見開き表示を切り替えます")
+            .help("1ページ表示と見開き表示を切り替えます（1 / 2 キー）")
             .disabled(model.session == nil)
             .focused($focusedControl, equals: .displayMode)
 
             iconButton(
                 "見開き位置を1ページずらす",
                 systemImage: "rectangle.split.2x1",
+                shortcut: "S",
                 action: model.toggleAlignment
             )
             .disabled(model.session == nil || model.preferences.displayMode == .single)
@@ -94,13 +96,13 @@ struct ReaderToolbar: View {
 
             Divider().frame(height: 20)
 
-            iconButton("縮小", systemImage: "minus.magnifyingglass", action: model.zoomOut)
+            iconButton("縮小", systemImage: "minus.magnifyingglass", shortcut: "⌘-", action: model.zoomOut)
                 .disabled(model.session == nil)
                 .focused($focusedControl, equals: .zoomOut)
-            iconButton("ウインドウに合わせる", systemImage: "arrow.down.right.and.arrow.up.left", action: model.fitToWindow)
+            iconButton("ウインドウに合わせる", systemImage: "arrow.down.right.and.arrow.up.left", shortcut: "⌘0", action: model.fitToWindow)
                 .disabled(model.session == nil)
                 .focused($focusedControl, equals: .fit)
-            iconButton("拡大", systemImage: "plus.magnifyingglass", action: model.zoomIn)
+            iconButton("拡大", systemImage: "plus.magnifyingglass", shortcut: "⌘+", action: model.zoomIn)
                 .disabled(model.session == nil)
                 .focused($focusedControl, equals: .zoomIn)
 
@@ -124,6 +126,7 @@ struct ReaderToolbar: View {
             iconButton(
                 sidebarIsVisible ? "フォルダ一覧を隠す" : "フォルダ一覧を表示",
                 systemImage: "sidebar.left",
+                shortcut: "⌘B",
                 action: { sidebarIsVisible.toggle() }
             )
             .focused($focusedControl, equals: .sidebar)
@@ -133,6 +136,7 @@ struct ReaderToolbar: View {
             iconButton(
                 "全画面表示を切り替える",
                 systemImage: "arrow.up.left.and.arrow.down.right",
+                shortcut: "⌃⌘F",
                 action: model.requestFullScreenToggle
             )
             .focused($focusedControl, equals: .fullScreen)
@@ -162,6 +166,7 @@ struct ReaderToolbar: View {
     private func iconButton(
         _ title: String,
         systemImage: String,
+        shortcut: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -172,7 +177,7 @@ struct ReaderToolbar: View {
         .foregroundStyle(ReaderTheme.primaryText)
         .contentShape(Rectangle())
         .accessibilityLabel(title)
-        .help(title)
+        .help(shortcut.map { "\(title)（\($0)）" } ?? title)
     }
 }
 

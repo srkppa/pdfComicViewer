@@ -2,12 +2,18 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// ルートビューに付ける `.fileImporter` がPDF用かフォルダ用かを表す。
+private enum FileImportKind: Equatable {
+    case pdf
+    case folder
+}
+
 @MainActor
 struct ReaderView: View {
     @ObservedObject var model: ReaderViewModel
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var fileImporterIsPresented = false
+    @State private var fileImportKind: FileImportKind?
     @State private var replacementPromptIsPresented = false
     @State private var isDropTargeted = false
     @State private var isFullScreen = false
@@ -16,7 +22,6 @@ struct ReaderView: View {
     @State private var contextPageIndex: Int?
     @State private var hideControlsTask: Task<Void, Never>?
     @StateObject private var sidebarModel = DirectorySidebarViewModel()
-    @State private var folderImporterIsPresented = false
     @State private var sidebarWidth: CGFloat = 260
     @State private var sidebarWidthAtDragStart: CGFloat?
 
@@ -26,7 +31,7 @@ struct ReaderView: View {
                 DirectorySidebarView(
                     model: sidebarModel,
                     currentFileURL: model.session?.url,
-                    chooseFolder: { folderImporterIsPresented = true },
+                    chooseFolder: { fileImportKind = .folder },
                     openPDF: { url in Task { await model.open(url: url) } },
                     hideSidebar: { model.sidebarIsVisible = false }
                 )
@@ -87,17 +92,19 @@ struct ReaderView: View {
         }
         .toolbarVisibility(isFullScreen ? .hidden : .visible, for: .windowToolbar)
         .fileImporter(
-            isPresented: $fileImporterIsPresented,
-            allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false,
-            onCompletion: handleFileImport
-        )
-        .fileImporter(
-            isPresented: $folderImporterIsPresented,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false,
-            onCompletion: handleFolderImport
-        )
+            isPresented: fileImportKindIsPresented,
+            allowedContentTypes: fileImportKind == .folder ? [.folder] : [.pdf],
+            allowsMultipleSelection: false
+        ) { [kind = fileImportKind] result in
+            switch kind {
+            case .pdf:
+                handleFileImport(result)
+            case .folder:
+                handleFolderImport(result)
+            case nil:
+                break
+            }
+        }
         .dropDestination(for: URL.self) { urls, _ in
             openDroppedPDF(from: urls)
         } isTargeted: { targeted in
@@ -126,7 +133,7 @@ struct ReaderView: View {
         .alert("PDFを開けません", isPresented: errorAlertIsPresented) {
             Button("別のPDFを選ぶ") {
                 model.errorMessage = nil
-                fileImporterIsPresented = true
+                fileImportKind = .pdf
             }
             Button("閉じる", role: .cancel) {
                 model.errorMessage = nil
@@ -135,7 +142,7 @@ struct ReaderView: View {
             Text(model.errorMessage ?? "別のPDFを選んでください。")
         }
         .onChange(of: model.fileOpenRequestSequence) { _, _ in
-            fileImporterIsPresented = true
+            fileImportKind = .pdf
         }
         .onChange(of: model.replacementConfirmation != nil, initial: true) { _, pending in
             if pending {
@@ -257,7 +264,7 @@ struct ReaderView: View {
                 .foregroundStyle(ReaderTheme.secondaryText)
 
             Button("PDFを開く") {
-                fileImporterIsPresented = true
+                fileImportKind = .pdf
             }
             .buttonStyle(.borderedProminent)
             .tint(ReaderTheme.accent)
@@ -369,6 +376,20 @@ struct ReaderView: View {
             set: { isPresented in
                 if !isPresented {
                     model.errorMessage = nil
+                }
+            }
+        )
+    }
+
+    /// PDF用・フォルダ用の `.fileImporter` を1つに統合するための表示状態。
+    /// 同じビューに `.fileImporter` を複数重ねると、片方が発火しなくなることがあるため
+    /// 「どちらを開こうとしているか」を単一の状態で表し、1箇所の `.fileImporter` に集約する。
+    private var fileImportKindIsPresented: Binding<Bool> {
+        Binding(
+            get: { fileImportKind != nil },
+            set: { isPresented in
+                if !isPresented {
+                    fileImportKind = nil
                 }
             }
         )
