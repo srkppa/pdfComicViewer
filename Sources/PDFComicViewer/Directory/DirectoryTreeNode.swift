@@ -20,3 +20,16 @@ struct DirectoryTreeNode: Identifiable, Equatable, Sendable {
         self.children = children
     }
 }
+
+extension [DirectoryTreeNode] {
+    /// ツリーを深さ優先で探索し、`id` が一致する最初のノードを返す。
+    func firstNode(withID id: String) -> DirectoryTreeNode? {
+        for node in self {
+            if node.id == id { return node }
+            if let match = node.children?.firstNode(withID: id) {
+                return match
+            }
+        }
+        return nil
+    }
+}

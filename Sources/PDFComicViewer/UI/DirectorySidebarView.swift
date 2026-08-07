@@ -7,6 +7,8 @@ struct DirectorySidebarView: View {
     let chooseFolder: () -> Void
     let openPDF: (URL) -> Void
 
+    @State private var selectedNodeID: String?
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -28,12 +30,12 @@ struct DirectorySidebarView: View {
                 .lineLimit(1)
             Spacer()
             Button(action: chooseFolder) {
-                Image(systemName: "folder.badge.plus")
+                Image(systemName: "folder")
             }
             .buttonStyle(.plain)
             .foregroundStyle(ReaderTheme.primaryText)
             .accessibilityLabel("フォルダを選択")
-            .help("フォルダを選択")
+            .help("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
         }
         .padding(10)
     }
@@ -58,12 +60,24 @@ struct DirectorySidebarView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            List(model.nodes, children: \.children) { node in
+            List(model.nodes, children: \.children, selection: $selectedNodeID) { node in
                 row(for: node)
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .onKeyPress(.return) {
+                openSelectedPDF()
+                return .handled
+            }
         }
+    }
+
+    /// 選択中のノードがPDFなら開く。矢印キーで選んだ後にリターンキーで決定する導線。
+    private func openSelectedPDF() {
+        guard let selectedNodeID,
+              let node = model.nodes.firstNode(withID: selectedNodeID),
+              node.kind == .pdf else { return }
+        openPDF(node.url)
     }
 
     private func row(for node: DirectoryTreeNode) -> some View {
