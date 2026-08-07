@@ -15,37 +15,57 @@ struct ReaderView: View {
     @State private var toolbarControlHasKeyboardFocus = false
     @State private var contextPageIndex: Int?
     @State private var hideControlsTask: Task<Void, Never>?
+    @StateObject private var sidebarModel = DirectorySidebarViewModel()
+    @State private var sidebarIsVisible = false
+    @State private var folderImporterIsPresented = false
 
     var body: some View {
-        ZStack {
-            ReaderTheme.canvas.ignoresSafeArea()
+        HStack(spacing: 0) {
+            ZStack {
+                ReaderTheme.canvas.ignoresSafeArea()
 
-            readerArea
+                readerArea
 
-            if model.isLoading {
-                loadingOverlay
-            }
-
-            if let warningMessage = model.warningMessage {
-                warningBanner(warningMessage)
-            }
-
-            if isFullScreen, controlsVisible {
-                VStack {
-                    ReaderToolbar(
-                        model: model,
-                        keyboardFocusChange: { focused in
-                            toolbarControlHasKeyboardFocus = focused
-                        }
-                    )
-                        .padding(.top, 12)
-                    Spacer()
+                if model.isLoading {
+                    loadingOverlay
                 }
-                .padding(.horizontal, 16)
-                .transition(.opacity)
-                .zIndex(3)
+
+                if let warningMessage = model.warningMessage {
+                    warningBanner(warningMessage)
+                }
+
+                if isFullScreen, controlsVisible {
+                    VStack {
+                        ReaderToolbar(
+                            model: model,
+                            sidebarIsVisible: $sidebarIsVisible,
+                            keyboardFocusChange: { focused in
+                                toolbarControlHasKeyboardFocus = focused
+                            }
+                        )
+                            .padding(.top, 12)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.opacity)
+                    .zIndex(3)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if sidebarIsVisible, !isFullScreen {
+                Divider()
+                DirectorySidebarView(
+                    model: sidebarModel,
+                    currentFileURL: model.session?.url,
+                    chooseFolder: { folderImporterIsPresented = true },
+                    openPDF: { url in Task { await model.open(url: url) } }
+                )
+                .frame(width: 260)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: sidebarIsVisible)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ReaderTheme.canvas)
         .preferredColorScheme(.dark)
@@ -55,6 +75,7 @@ struct ReaderView: View {
                 ToolbarItem(placement: .principal) {
                     ReaderToolbar(
                         model: model,
+                        sidebarIsVisible: $sidebarIsVisible,
                         keyboardFocusChange: { focused in
                             toolbarControlHasKeyboardFocus = focused
                         }
@@ -68,6 +89,12 @@ struct ReaderView: View {
             allowedContentTypes: [.pdf],
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
+        )
+        .fileImporter(
+            isPresented: $folderImporterIsPresented,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false,
+            onCompletion: handleFolderImport
         )
         .dropDestination(for: URL.self) { urls, _ in
             openDroppedPDF(from: urls)
@@ -112,6 +139,14 @@ struct ReaderView: View {
             if pending {
                 replacementPromptIsPresented = true
             }
+        }
+        .onChange(of: model.session?.url) { _, newURL in
+            guard let newURL else { return }
+            sidebarModel.setRoot(newURL.deletingLastPathComponent())
+        }
+        .onChange(of: sidebarModel.rootURL) { oldValue, newValue in
+            guard oldValue == nil, newValue != nil else { return }
+            sidebarIsVisible = true
         }
         .onDisappear {
             hideControlsTask?.cancel()
@@ -311,6 +346,17 @@ struct ReaderView: View {
         case .failure(let error):
             guard (error as NSError).code != NSUserCancelledError else { return }
             model.errorMessage = "PDFを選択できませんでした。もう一度「PDFを開く」から選んでください。"
+        }
+    }
+
+    private func handleFolderImport(_ result: Result<[URL], any Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            sidebarModel.setRoot(url)
+        case .failure(let error):
+            guard (error as NSError).code != NSUserCancelledError else { return }
+            sidebarModel.errorMessage = "フォルダを選択できませんでした。"
         }
     }
 

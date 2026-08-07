@@ -37,15 +37,18 @@ enum ReaderTheme {
 @MainActor
 struct ReaderToolbar: View {
     @ObservedObject var model: ReaderViewModel
+    @Binding var sidebarIsVisible: Bool
     @FocusState private var focusedControl: FocusedReaderControl?
 
     let keyboardFocusChange: (Bool) -> Void
 
     init(
         model: ReaderViewModel,
+        sidebarIsVisible: Binding<Bool>,
         keyboardFocusChange: @escaping (Bool) -> Void = { _ in }
     ) {
         self.model = model
+        self._sidebarIsVisible = sidebarIsVisible
         self.keyboardFocusChange = keyboardFocusChange
     }
 
@@ -111,6 +114,23 @@ struct ReaderToolbar: View {
             Divider().frame(height: 20)
 
             iconButton(
+                "PDFを閉じる",
+                systemImage: "xmark.circle",
+                action: { Task { await model.closeDocument() } }
+            )
+            .disabled(model.session == nil)
+            .focused($focusedControl, equals: .close)
+
+            iconButton(
+                sidebarIsVisible ? "フォルダ一覧を隠す" : "フォルダ一覧を表示",
+                systemImage: "sidebar.right",
+                action: { sidebarIsVisible.toggle() }
+            )
+            .focused($focusedControl, equals: .sidebar)
+
+            Divider().frame(height: 20)
+
+            iconButton(
                 "全画面表示を切り替える",
                 systemImage: "arrow.up.left.and.arrow.down.right",
                 action: model.requestFullScreenToggle
@@ -164,6 +184,8 @@ private enum FocusedReaderControl: Hashable {
     case zoomOut
     case fit
     case zoomIn
+    case close
+    case sidebar
     case fullScreen
 }
 
