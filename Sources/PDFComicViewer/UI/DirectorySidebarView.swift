@@ -6,6 +6,7 @@ struct DirectorySidebarView: View {
     let currentFileURL: URL?
     let chooseFolder: () -> Void
     let openPDF: (URL) -> Void
+    let hideSidebar: () -> Void
 
     @State private var selectedNodeID: String?
 
@@ -21,6 +22,14 @@ struct DirectorySidebarView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            Button(action: hideSidebar) {
+                Image(systemName: "sidebar.left")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(ReaderTheme.secondaryText)
+            .accessibilityLabel("サイドバーを隠す")
+            .help("サイドバーを隠す")
+
             Image(systemName: "folder")
                 .foregroundStyle(ReaderTheme.secondaryText)
                 .accessibilityHidden(true)

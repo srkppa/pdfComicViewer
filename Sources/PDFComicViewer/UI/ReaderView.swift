@@ -16,21 +16,23 @@ struct ReaderView: View {
     @State private var contextPageIndex: Int?
     @State private var hideControlsTask: Task<Void, Never>?
     @StateObject private var sidebarModel = DirectorySidebarViewModel()
-    @State private var sidebarIsVisible = false
     @State private var folderImporterIsPresented = false
+    @State private var sidebarWidth: CGFloat = 260
+    @State private var sidebarWidthAtDragStart: CGFloat?
 
     var body: some View {
         HStack(spacing: 0) {
-            if sidebarIsVisible, !isFullScreen {
+            if model.sidebarIsVisible, !isFullScreen {
                 DirectorySidebarView(
                     model: sidebarModel,
                     currentFileURL: model.session?.url,
                     chooseFolder: { folderImporterIsPresented = true },
-                    openPDF: { url in Task { await model.open(url: url) } }
+                    openPDF: { url in Task { await model.open(url: url) } },
+                    hideSidebar: { model.sidebarIsVisible = false }
                 )
-                .frame(width: 260)
+                .frame(width: sidebarWidth)
                 .transition(.move(edge: .leading).combined(with: .opacity))
-                Divider()
+                sidebarResizeHandle
             }
 
             ZStack {
@@ -50,7 +52,7 @@ struct ReaderView: View {
                     VStack {
                         ReaderToolbar(
                             model: model,
-                            sidebarIsVisible: $sidebarIsVisible,
+                            sidebarIsVisible: $model.sidebarIsVisible,
                             keyboardFocusChange: { focused in
                                 toolbarControlHasKeyboardFocus = focused
                             }
@@ -65,7 +67,7 @@ struct ReaderView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .animation(.easeInOut(duration: 0.18), value: sidebarIsVisible)
+        .animation(.easeInOut(duration: 0.18), value: model.sidebarIsVisible)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ReaderTheme.canvas)
         .preferredColorScheme(.dark)
@@ -75,7 +77,7 @@ struct ReaderView: View {
                 ToolbarItem(placement: .principal) {
                     ReaderToolbar(
                         model: model,
-                        sidebarIsVisible: $sidebarIsVisible,
+                        sidebarIsVisible: $model.sidebarIsVisible,
                         keyboardFocusChange: { focused in
                             toolbarControlHasKeyboardFocus = focused
                         }
@@ -151,7 +153,7 @@ struct ReaderView: View {
         }
         .onChange(of: sidebarModel.rootURL) { oldValue, newValue in
             guard oldValue == nil, newValue != nil else { return }
-            sidebarIsVisible = true
+            model.sidebarIsVisible = true
         }
         .onDisappear {
             hideControlsTask?.cancel()
@@ -160,6 +162,35 @@ struct ReaderView: View {
             guard phase != .active else { return }
             Task { await model.flushPendingSaves() }
         }
+    }
+
+    private var sidebarResizeHandle: some View {
+        ZStack {
+            Divider()
+            Color.clear.contentShape(Rectangle())
+        }
+        .frame(width: 8)
+        .onHover { hovering in
+            if hovering {
+                NSCursor.resizeLeftRight.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    let startingWidth = sidebarWidthAtDragStart ?? sidebarWidth
+                    sidebarWidthAtDragStart = startingWidth
+                    sidebarWidth = SidebarResizing.width(
+                        startingWidth: startingWidth,
+                        translation: value.translation.width
+                    )
+                }
+                .onEnded { _ in
+                    sidebarWidthAtDragStart = nil
+                }
+        )
     }
 
     private var readerArea: some View {

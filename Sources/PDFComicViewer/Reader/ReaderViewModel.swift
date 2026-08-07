@@ -23,6 +23,7 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var zoomCommand = ZoomCommand(action: .fit, sequence: 0)
     @Published private(set) var fullScreenRequestSequence = 0
     @Published private(set) var pagePreviewSnapshot = PagePreviewSnapshot.empty
+    @Published var sidebarIsVisible = false
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring

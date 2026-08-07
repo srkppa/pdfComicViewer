@@ -108,6 +108,13 @@ struct ReaderCommands: Commands {
 
             Divider()
 
+            Button(model.sidebarIsVisible ? "サイドバーを隠す" : "サイドバーを表示") {
+                model.sidebarIsVisible.toggle()
+            }
+            .keyboardShortcut("b", modifiers: .command)
+
+            Divider()
+
             Button("全画面表示を切り替える") {
                 model.requestFullScreenToggle()
             }
