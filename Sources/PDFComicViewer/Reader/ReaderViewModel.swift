@@ -167,10 +167,13 @@ final class ReaderViewModel: ObservableObject {
     /// `nextVolumeTask`でガードする。
     private func advanceToNextVolumeIfPossible() {
         guard nextVolumeTask == nil, let session else { return }
+        let startingURL = session.url
         nextVolumeTask = Task { [weak self] in
             defer { self?.nextVolumeTask = nil }
             guard let self,
-                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: session.url) else {
+                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: startingURL),
+                  // 探索中にユーザーが別の文書へ移動していたら、それを勝手に上書きしない。
+                  self.session?.url == startingURL else {
                 return
             }
             await self.open(url: nextURL)
