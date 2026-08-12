@@ -41,7 +41,8 @@ private enum AppServices {
 
     static let readerModel = ReaderViewModel(
         loader: PDFDocumentLoader(),
-        progressStore: progressStore
+        progressStore: progressStore,
+        seriesNavigator: SeriesNavigator()
     )
 
     static let sidebarModel = DirectorySidebarViewModel(progressStore: progressStore)

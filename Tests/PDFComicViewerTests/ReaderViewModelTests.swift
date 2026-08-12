@@ -189,7 +189,13 @@ final class ReaderViewModelTests: XCTestCase {
     }
 
     func testNextAtLastUnitStaysAtLastUnit() async {
-        let (model, _) = await makeOpenedModel(pageCount: 4)
+        // 既定のSeriesNavigator（実ファイルシステムを読む）に頼ると、
+        // 最後の表示単位でnext()を押したときに実際の/tmpを読みに行ってしまい
+        // テストが非決定的になる。何も返さないフェイクを明示的に注入する。
+        let (model, _) = await makeOpenedModel(
+            pageCount: 4,
+            seriesNavigator: FakeSeriesNavigator()
+        )
         model.next()
         model.next()
 
@@ -198,6 +204,63 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.currentUnitIndex, 2)
         XCTAssertEqual(model.currentUnit, .single(3))
         XCTAssertEqual(model.currentPhysicalPage, 3)
+    }
+
+    func testNextAtLastUnitOpensNextVolumeWhenAvailable() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let nextURL = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(nextURLsByCurrentURL: [url: nextURL])
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 1, url: url)))
+        loader.resultsByURL[nextURL] = .ready(.fixture(pageCount: 1, url: nextURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+
+        model.next()
+        try await waitUntil { model.session?.url == nextURL }
+
+        XCTAssertEqual(model.session?.url, nextURL)
+        let requested = await navigator.requestedURLs
+        XCTAssertEqual(requested, [url])
+    }
+
+    func testNextAtLastUnitDoesNothingWhenNoNextVolumeExists() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let navigator = FakeSeriesNavigator()
+        let (model, _) = await makeOpenedModel(
+            pageCount: 1,
+            url: url,
+            seriesNavigator: navigator
+        )
+
+        model.next()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(model.session?.url, url)
+        let requested = await navigator.requestedURLs
+        XCTAssertEqual(requested, [url])
+    }
+
+    func testRepeatedNextAtLastUnitDoesNotStartOverlappingLookups() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let navigator = FakeSeriesNavigator()
+        let (model, _) = await makeOpenedModel(
+            pageCount: 1,
+            url: url,
+            seriesNavigator: navigator
+        )
+
+        model.next()
+        model.next()
+        model.next()
+        try await Task.sleep(for: .milliseconds(50))
+
+        // 探索中は同じ処理を二重に始めない。連打しても1回しか問い合わせない。
+        let requested = await navigator.requestedURLs
+        XCTAssertEqual(requested, [url])
     }
 
     func testTogglingAlignmentKeepsCurrentPhysicalPage() async {
@@ -693,7 +756,8 @@ final class ReaderViewModelTests: XCTestCase {
     private func makeOpenedModel(
         pageCount: Int,
         url: URL = URL(fileURLWithPath: "/tmp/comic.pdf"),
-        lastPageIndex: Int = 0
+        lastPageIndex: Int = 0,
+        seriesNavigator: any SeriesNavigating = FakeSeriesNavigator()
     ) async -> (ReaderViewModel, FakeProgressStore) {
         let session = DocumentSession.fixture(pageCount: pageCount, url: url)
         let store = FakeProgressStore(
@@ -705,7 +769,8 @@ final class ReaderViewModelTests: XCTestCase {
         )
         let model = ReaderViewModel(
             loader: FakePDFLoader(result: .ready(session)),
-            progressStore: store
+            progressStore: store,
+            seriesNavigator: seriesNavigator
         )
         await model.open(url: url)
         return (model, store)
@@ -866,6 +931,20 @@ final class ReaderViewModelTests: XCTestCase {
 
         let saved = await store.savedRecords.last
         XCTAssertEqual(saved?.preferences.lastPageIndex, 0)
+    }
+}
+
+private actor FakeSeriesNavigator: SeriesNavigating {
+    private var nextURLsByCurrentURL: [URL: URL] = [:]
+    private(set) var requestedURLs: [URL] = []
+
+    init(nextURLsByCurrentURL: [URL: URL] = [:]) {
+        self.nextURLsByCurrentURL = nextURLsByCurrentURL
+    }
+
+    func nextVolumeURL(after url: URL) async -> URL? {
+        requestedURLs.append(url)
+        return nextURLsByCurrentURL[url.standardizedFileURL]
     }
 }
 

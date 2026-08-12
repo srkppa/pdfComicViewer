@@ -31,7 +31,9 @@ final class ReaderViewModel: ObservableObject {
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
+    private let seriesNavigator: any SeriesNavigating
     private let pagePreviewCache = PagePreviewCache()
+    private var nextVolumeTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
     private var pagePreviewTask: Task<Void, Never>?
     private var dirtyRecords: [String: (generation: Int, record: DocumentRecord)] = [:]
@@ -42,9 +44,14 @@ final class ReaderViewModel: ObservableObject {
     private var pagePreviewDocumentID = UUID()
     private var pagePreviewSnapshotRevision = 0
 
-    init(loader: any PDFDocumentLoading, progressStore: any ReadingProgressStoring) {
+    init(
+        loader: any PDFDocumentLoading,
+        progressStore: any ReadingProgressStoring,
+        seriesNavigator: any SeriesNavigating = SeriesNavigator()
+    ) {
         self.loader = loader
         self.progressStore = progressStore
+        self.seriesNavigator = seriesNavigator
     }
 
     static func progressFileURL(applicationSupportDirectory: URL) -> URL {
@@ -144,12 +151,30 @@ final class ReaderViewModel: ObservableObject {
     func next() {
         guard !displayUnits.isEmpty else { return }
         let nextIndex = min(currentUnitIndex + 1, displayUnits.count - 1)
-        guard nextIndex != currentUnitIndex else { return }
+        guard nextIndex != currentUnitIndex else {
+            advanceToNextVolumeIfPossible()
+            return
+        }
         currentUnitIndex = nextIndex
         updateCurrentPageFromUnit()
         schedulePagePreviews()
         fitToWindow()
         scheduleSave()
+    }
+
+    /// 最後のページで「次へ」を押したときに、同じフォルダの次のPDFへ自動的に進む。
+    /// 見つからなければ何もしない。探索中の連打で二重に始めないよう
+    /// `nextVolumeTask`でガードする。
+    private func advanceToNextVolumeIfPossible() {
+        guard nextVolumeTask == nil, let session else { return }
+        nextVolumeTask = Task { [weak self] in
+            defer { self?.nextVolumeTask = nil }
+            guard let self,
+                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: session.url) else {
+                return
+            }
+            await self.open(url: nextURL)
+        }
     }
 
     func previous() {
