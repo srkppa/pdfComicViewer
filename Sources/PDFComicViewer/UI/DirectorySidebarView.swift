@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @MainActor
@@ -177,7 +178,10 @@ struct DirectorySidebarView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            guard node.kind == .pdf else { return }
+            guard node.kind == .pdf,
+                  SidebarRowInteraction.shouldOpenPDF(modifiers: NSEvent.modifierFlags) else {
+                return
+            }
             openPDF(node.url)
         }
         .accessibilityLabel(node.name)
