@@ -38,6 +38,7 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(ReaderTheme.primaryText)
                 .lineLimit(1)
             Spacer()
+            sortDirectionButton
             displayOptionsMenu
             Button(action: chooseFolder) {
                 Image(systemName: "folder")
@@ -53,16 +54,14 @@ struct DirectorySidebarView: View {
         .padding(10)
     }
 
-    /// 更新日の表示切り替え・並べ替え条件をまとめたメニュー。
+    /// 更新日の表示切り替え・並べ替えの基準をまとめたメニュー。向きの反転は`sortDirectionButton`で行う。
     private var displayOptionsMenu: some View {
         Menu {
             Toggle("更新日を表示", isOn: $model.showsModificationDate)
             Divider()
-            Picker("並べ替え", selection: $model.sortOrder) {
-                Text("名前（昇順）").tag(DirectorySortOrder.nameAscending)
-                Text("名前（降順）").tag(DirectorySortOrder.nameDescending)
-                Text("更新日（新しい順）").tag(DirectorySortOrder.modificationDateDescending)
-                Text("更新日（古い順）").tag(DirectorySortOrder.modificationDateAscending)
+            Picker("並べ替えの基準", selection: $model.sortKey) {
+                Text("名前").tag(DirectorySortKey.name)
+                Text("更新日").tag(DirectorySortKey.modificationDate)
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -71,8 +70,26 @@ struct DirectorySidebarView: View {
         .menuStyle(.borderlessButton)
         .frame(width: 20, height: 20)
         .foregroundStyle(ReaderTheme.primaryText)
-        .help("表示オプション（更新日の表示・並べ替え）")
-        .nativeToolTip("表示オプション（更新日の表示・並べ替え）")
+        .help("表示オプション（更新日の表示・並べ替えの基準）")
+        .nativeToolTip("表示オプション（更新日の表示・並べ替えの基準）")
+    }
+
+    /// 並べ替えの向き（昇順・降順）だけをワンクリックで反転させるボタン。
+    private var sortDirectionButton: some View {
+        let isAscending = model.sortDirection == .ascending
+        let helpText = "並べ替えの向きを反転（現在: \(isAscending ? "昇順" : "降順")）"
+        return Button {
+            model.sortDirection = model.sortDirection.toggled
+        } label: {
+            Image(systemName: isAscending ? "arrow.up" : "arrow.down")
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(ReaderTheme.primaryText)
+        .contentShape(Rectangle())
+        .accessibilityLabel(isAscending ? "昇順で並べ替え中" : "降順で並べ替え中")
+        .help(helpText)
+        .nativeToolTip(helpText)
     }
 
     @ViewBuilder
@@ -118,21 +135,25 @@ struct DirectorySidebarView: View {
     private func row(for node: DirectoryTreeNode) -> some View {
         let isCurrent = node.kind == .pdf
             && node.url.standardizedFileURL == currentFileURL?.standardizedFileURL
-        return HStack(spacing: 6) {
-            Image(systemName: node.kind == .folder ? "folder" : "doc.richtext")
-                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.secondaryText)
-                .accessibilityHidden(true)
-            Text(node.name)
-                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
-                .fontWeight(isCurrent ? .semibold : .regular)
-                .lineLimit(1)
+        // 更新日はファイル名と横幅を取り合わないよう、名前とは別の行として独立させる。
+        // こうすることで、ファイル名が長い場合でも更新日が隠れずに常に表示される。
+        return VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: node.kind == .folder ? "folder" : "doc.richtext")
+                    .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.secondaryText)
+                    .accessibilityHidden(true)
+                Text(node.name)
+                    .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
+                    .fontWeight(isCurrent ? .semibold : .regular)
+                    .lineLimit(1)
+            }
             if model.showsModificationDate, let modificationDate = node.modificationDate {
-                Spacer(minLength: 8)
                 Text(modificationDate, style: .date)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(ReaderTheme.secondaryText)
                     .lineLimit(1)
-                    .layoutPriority(-1)
+                    // アイコン分だけ字下げして、名前の開始位置に揃える。
+                    .padding(.leading, 22)
             }
         }
         .contentShape(Rectangle())

@@ -66,7 +66,7 @@ final class DirectoryTreeNodeTests: XCTestCase {
             DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Alpha"), kind: .folder),
         ]
 
-        let sorted = nodes.sorted(by: .nameAscending)
+        let sorted = nodes.sorted(by: .name, direction: .ascending)
 
         XCTAssertEqual(sorted.map(\.name), ["Alpha", "Zeta", "a.pdf", "b.pdf"])
     }
@@ -79,7 +79,7 @@ final class DirectoryTreeNodeTests: XCTestCase {
             DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Zeta"), kind: .folder),
         ]
 
-        let sorted = nodes.sorted(by: .nameDescending)
+        let sorted = nodes.sorted(by: .name, direction: .descending)
 
         XCTAssertEqual(sorted.map(\.name), ["Zeta", "Alpha", "b.pdf", "a.pdf"])
     }
@@ -98,10 +98,10 @@ final class DirectoryTreeNodeTests: XCTestCase {
         )
         let nodes = [newNode, unknownNode, oldNode]
 
-        let ascending = nodes.sorted(by: .modificationDateAscending)
+        let ascending = nodes.sorted(by: .modificationDate, direction: .ascending)
         XCTAssertEqual(ascending.map(\.name), ["unknown.pdf", "old.pdf", "new.pdf"])
 
-        let descending = nodes.sorted(by: .modificationDateDescending)
+        let descending = nodes.sorted(by: .modificationDate, direction: .descending)
         XCTAssertEqual(descending.map(\.name), ["new.pdf", "old.pdf", "unknown.pdf"])
     }
 
@@ -112,8 +112,13 @@ final class DirectoryTreeNodeTests: XCTestCase {
             url: URL(fileURLWithPath: "/tmp/comics/vol"), kind: .folder, children: [child1, child2]
         )
 
-        let sorted = [folder].sorted(by: .nameAscending)
+        let sorted = [folder].sorted(by: .name, direction: .ascending)
 
         XCTAssertEqual(sorted.first?.children?.map(\.name), ["a.pdf", "b.pdf"])
+    }
+
+    func testSortDirectionToggledFlipsBetweenAscendingAndDescending() {
+        XCTAssertEqual(DirectorySortDirection.ascending.toggled, .descending)
+        XCTAssertEqual(DirectorySortDirection.descending.toggled, .ascending)
     }
 }

@@ -29,12 +29,21 @@ struct DirectoryTreeNode: Identifiable, Equatable, Sendable {
     }
 }
 
-/// フォルダ一覧の並べ替え条件。
-enum DirectorySortOrder: String, CaseIterable, Equatable, Sendable {
-    case nameAscending
-    case nameDescending
-    case modificationDateAscending
-    case modificationDateDescending
+/// フォルダ一覧の並べ替えの基準。
+enum DirectorySortKey: String, CaseIterable, Equatable, Sendable {
+    case name
+    case modificationDate
+}
+
+/// フォルダ一覧の並べ替えの向き。
+enum DirectorySortDirection: String, CaseIterable, Equatable, Sendable {
+    case ascending
+    case descending
+
+    /// 現在の向きを反転させたもの。
+    var toggled: DirectorySortDirection {
+        self == .ascending ? .descending : .ascending
+    }
 }
 
 extension [DirectoryTreeNode] {
@@ -49,31 +58,35 @@ extension [DirectoryTreeNode] {
         return nil
     }
 
-    /// フォルダを先頭に保ったまま、各階層を指定した条件で並べ替えたコピーを返す。
-    func sorted(by order: DirectorySortOrder) -> [DirectoryTreeNode] {
-        let folders = filter { $0.kind == .folder }.sortedByOrder(order)
-        let files = filter { $0.kind == .pdf }.sortedByOrder(order)
+    /// フォルダを先頭に保ったまま、各階層を指定した基準・向きで並べ替えたコピーを返す。
+    func sorted(by key: DirectorySortKey, direction: DirectorySortDirection) -> [DirectoryTreeNode] {
+        let folders = filter { $0.kind == .folder }.sortedByKey(key, direction: direction)
+        let files = filter { $0.kind == .pdf }.sortedByKey(key, direction: direction)
         return (folders + files).map { node in
             var node = node
-            node.children = node.children?.sorted(by: order)
+            node.children = node.children?.sorted(by: key, direction: direction)
             return node
         }
     }
 
-    private func sortedByOrder(_ order: DirectorySortOrder) -> [DirectoryTreeNode] {
-        switch order {
-        case .nameAscending:
-            return sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        case .nameDescending:
-            return sorted { $0.name.localizedStandardCompare($1.name) == .orderedDescending }
-        case .modificationDateAscending:
-            return sorted { lhs, rhs in
-                (lhs.modificationDate ?? .distantPast) < (rhs.modificationDate ?? .distantPast)
+    private func sortedByKey(
+        _ key: DirectorySortKey,
+        direction: DirectorySortDirection
+    ) -> [DirectoryTreeNode] {
+        let isOrderedBefore: (DirectoryTreeNode, DirectoryTreeNode) -> Bool
+        switch key {
+        case .name:
+            isOrderedBefore = { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .modificationDate:
+            isOrderedBefore = {
+                ($0.modificationDate ?? .distantPast) < ($1.modificationDate ?? .distantPast)
             }
-        case .modificationDateDescending:
-            return sorted { lhs, rhs in
-                (lhs.modificationDate ?? .distantPast) > (rhs.modificationDate ?? .distantPast)
-            }
+        }
+        switch direction {
+        case .ascending:
+            return sorted(by: isOrderedBefore)
+        case .descending:
+            return sorted { isOrderedBefore($1, $0) }
         }
     }
 }

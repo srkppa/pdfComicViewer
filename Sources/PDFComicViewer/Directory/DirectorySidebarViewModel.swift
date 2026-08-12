@@ -8,12 +8,14 @@ final class DirectorySidebarViewModel: ObservableObject {
     @Published var errorMessage: String?
     /// 各行に最終更新日を表示するかどうか。常時表示ではなく、ヘッダーのメニューから切り替える。
     @Published var showsModificationDate = false
-    /// フォルダ一覧の並べ替え条件。フォルダは常に先頭にまとまる。
-    @Published var sortOrder: DirectorySortOrder = .nameAscending
+    /// フォルダ一覧の並べ替えの基準。フォルダは常に先頭にまとまる。
+    @Published var sortKey: DirectorySortKey = .name
+    /// フォルダ一覧の並べ替えの向き。
+    @Published var sortDirection: DirectorySortDirection = .ascending
 
-    /// `sortOrder` を適用した表示用のツリー。
+    /// `sortKey` と `sortDirection` を適用した表示用のツリー。
     var sortedNodes: [DirectoryTreeNode] {
-        nodes.sorted(by: sortOrder)
+        nodes.sorted(by: sortKey, direction: sortDirection)
     }
 
     private let scanner: any DirectoryScanning
