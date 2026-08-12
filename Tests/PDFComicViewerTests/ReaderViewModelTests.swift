@@ -933,6 +933,14 @@ private actor FakeProgressStore: ReadingProgressStoring {
         record.map { [$0] } ?? []
     }
 
+    var removedURLs: [URL] = []
+
+    func remove(for url: URL) throws {
+        removedURLs.append(url)
+        guard record?.normalizedPath == url.standardizedFileURL.path else { return }
+        record = nil
+    }
+
     func setRecord(_ record: DocumentRecord?) {
         self.record = record
     }

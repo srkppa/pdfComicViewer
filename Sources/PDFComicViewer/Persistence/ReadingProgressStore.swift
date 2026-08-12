@@ -4,6 +4,7 @@ protocol ReadingProgressStoring: Sendable {
     func load(for url: URL) async throws -> DocumentRecord?
     func save(_ record: DocumentRecord) async throws
     func allRecords() async throws -> [DocumentRecord]
+    func remove(for url: URL) async throws
 }
 
 enum DocumentBookmarkService {
@@ -74,6 +75,33 @@ actor FileReadingProgressStore: ReadingProgressStoring {
 
     func allRecords() throws -> [DocumentRecord] {
         try loadRecords()
+    }
+
+    /// PDFを削除したときに、対応する読書位置レコードを残さないための後片付け。
+    /// ゴミ箱へ移した後はブックマークが移動先を指すことがあるため、
+    /// `save(_:)` と同じくパス一致でも判定する。
+    func remove(for url: URL) throws {
+        let target = url.standardizedFileURL
+        var values = try loadRecords()
+        values.removeAll { existing in
+            if existing.normalizedPath == target.path {
+                return true
+            }
+            guard let resolved = try? DocumentBookmarkService.resolve(
+                existing.bookmarkData
+            ).standardizedFileURL else {
+                return false
+            }
+            return resolved == target
+        }
+
+        let data = try JSONEncoder().encode(values)
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: fileURL, options: .atomic)
+        records = values
     }
 
     private func loadRecords() throws -> [DocumentRecord] {

@@ -106,6 +106,48 @@ final class ReadingProgressStoreTests: XCTestCase {
         XCTAssertEqual(allRecords, [latest])
     }
 
+    func testRemoveDeletesOnlyTheMatchingRecord() async throws {
+        let store = FileReadingProgressStore(fileURL: progressFile)
+        let kept = makeRecord(path: "/tmp/kept.pdf", lastPageIndex: 3)
+        let removed = makeRecord(path: "/tmp/removed.pdf", lastPageIndex: 7)
+        try await store.save(kept)
+        try await store.save(removed)
+
+        try await store.remove(for: URL(fileURLWithPath: "/tmp/removed.pdf"))
+
+        let reloadedStore = FileReadingProgressStore(fileURL: progressFile)
+        let records = try await reloadedStore.allRecords()
+        XCTAssertEqual(records, [kept])
+    }
+
+    func testRemoveForUnknownURLIsHarmless() async throws {
+        let store = FileReadingProgressStore(fileURL: progressFile)
+        let kept = makeRecord(path: "/tmp/kept.pdf", lastPageIndex: 3)
+        try await store.save(kept)
+
+        try await store.remove(for: URL(fileURLWithPath: "/tmp/never-saved.pdf"))
+
+        let records = try await store.allRecords()
+        XCTAssertEqual(records, [kept])
+    }
+
+    func testRemoveMatchesRecordSavedUnderBookmarkedPath() async throws {
+        let file = temporaryDirectory.appending(path: "comic.pdf")
+        try Data([0]).write(to: file)
+        let record = makeRecord(
+            bookmarkData: try DocumentBookmarkService.makeBookmark(for: file),
+            path: file.standardizedFileURL.path,
+            lastPageIndex: 5
+        )
+        let store = FileReadingProgressStore(fileURL: progressFile)
+        try await store.save(record)
+
+        try await store.remove(for: file)
+
+        let records = try await store.allRecords()
+        XCTAssertTrue(records.isEmpty)
+    }
+
     private func makeRecord(
         bookmarkData: Data = Data(),
         path: String,
