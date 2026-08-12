@@ -138,6 +138,15 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         model.setRoot(URL(fileURLWithPath: "/tmp/other"))
 
         XCTAssertEqual(model.searchQuery, "")
+
+        // 同じフォルダを指定した場合はearly-returnガードに当たるため、
+        // 検索中の入力を消してはいけない。
+        try await waitUntil { model.isLoading == false }
+        model.searchQuery = "still searching"
+
+        model.setRoot(URL(fileURLWithPath: "/tmp/other"))
+
+        XCTAssertEqual(model.searchQuery, "still searching")
     }
 
     func testPDFURLsExcludesFolders() async throws {
