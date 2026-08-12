@@ -71,9 +71,11 @@ struct ReaderView: View {
                         ReaderToolbar(
                             model: model,
                             sidebarIsVisible: $model.sidebarIsVisible,
+                            targetURLs: toolbarTargetURLs,
                             requestDelete: { urls in
                                 pendingDeletion = PendingDeletion(urls: urls)
                             },
+                            resetProgress: resetProgress(for:),
                             keyboardFocusChange: { focused in
                                 toolbarControlHasKeyboardFocus = focused
                             }
@@ -99,9 +101,11 @@ struct ReaderView: View {
                     ReaderToolbar(
                         model: model,
                         sidebarIsVisible: $model.sidebarIsVisible,
+                        targetURLs: toolbarTargetURLs,
                         requestDelete: { urls in
                             pendingDeletion = PendingDeletion(urls: urls)
                         },
+                        resetProgress: resetProgress(for:),
                         keyboardFocusChange: { focused in
                             toolbarControlHasKeyboardFocus = focused
                         }
@@ -230,6 +234,16 @@ struct ReaderView: View {
                     sidebarWidthAtDragStart = nil
                 }
         )
+    }
+
+    /// ツールバーの操作対象。一覧で選んでいるものを優先し、
+    /// 何も選ばれていなければ開いているPDFを対象にする。
+    private var toolbarTargetURLs: [URL] {
+        let selected = sidebarModel.pdfURLs(for: sidebarModel.selectedNodeIDs)
+        if !selected.isEmpty {
+            return selected
+        }
+        return model.session.map { [$0.url] } ?? []
     }
 
     /// シークバーを実際に出してよいか。飛ぶ先が無いときは出さない。

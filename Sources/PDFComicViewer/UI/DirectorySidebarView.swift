@@ -11,8 +11,6 @@ struct DirectorySidebarView: View {
     let resetProgress: ([URL]) -> Void
     let requestDelete: ([URL]) -> Void
 
-    @State private var selectedNodeIDs: Set<String> = []
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -133,7 +131,7 @@ struct DirectorySidebarView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            List(model.sortedNodes, children: \.children, selection: $selectedNodeIDs) { node in
+            List(model.sortedNodes, children: \.children, selection: $model.selectedNodeIDs) { node in
                 row(for: node)
             }
             .listStyle(.sidebar)
@@ -165,8 +163,8 @@ struct DirectorySidebarView: View {
     /// 選択中のノードがPDF1つだけなら開く。矢印キーで選んだ後にリターンキーで決定する導線。
     /// 複数選択中は、どれを開くべきか決められないので何もしない。
     private func openSelectedPDF() {
-        guard selectedNodeIDs.count == 1,
-              let id = selectedNodeIDs.first,
+        guard model.selectedNodeIDs.count == 1,
+              let id = model.selectedNodeIDs.first,
               let node = model.nodes.firstNode(withID: id),
               node.kind == .pdf else { return }
         openPDF(node.url)
@@ -196,7 +194,10 @@ struct DirectorySidebarView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
+        // シングルクリックはListの選択処理にそのまま通す。
+        // `.onTapGesture` はクリックを消費するため、1クリックで開く形にすると
+        // 行の上では⌘・⇧クリックがListまで届かず複数選択ができなくなる。
+        .onTapGesture(count: 2) {
             guard node.kind == .pdf,
                   SidebarRowInteraction.shouldOpenPDF(modifiers: NSEvent.modifierFlags) else {
                 return

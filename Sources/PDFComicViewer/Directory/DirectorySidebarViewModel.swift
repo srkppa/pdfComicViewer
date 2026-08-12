@@ -12,6 +12,8 @@ final class DirectorySidebarViewModel: ObservableObject {
     @Published var sortKey: DirectorySortKey = .name
     /// フォルダ一覧の並べ替えの向き。
     @Published var sortDirection: DirectorySortDirection = .ascending
+    /// ツールバーからも選択対象を参照するため、Viewの`@State`ではなくここで持つ。
+    @Published var selectedNodeIDs: Set<String> = []
 
     /// `sortKey` と `sortDirection` を適用した表示用のツリー。
     var sortedNodes: [DirectoryTreeNode] {
@@ -112,6 +114,12 @@ final class DirectorySidebarViewModel: ObservableObject {
         for url in urls where !failures.contains(url) {
             try? await progressStore.remove(for: url)
         }
+        // ゴミ箱へ移動できたファイルはもう存在しないので選択から外す。
+        // 失敗したファイルは操作をやり直せるよう選択状態を保つ。
+        let trashedIDs = Set(
+            urls.filter { !failures.contains($0) }.map { $0.standardizedFileURL.path }
+        )
+        selectedNodeIDs.subtract(trashedIDs)
         // 全件失敗しても再スキャンする。実際のファイル状態に一覧を追従させるため。
         reload()
         return failures.count

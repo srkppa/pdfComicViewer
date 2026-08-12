@@ -40,18 +40,24 @@ struct ReaderToolbar: View {
     @Binding var sidebarIsVisible: Bool
     @FocusState private var focusedControl: FocusedReaderControl?
 
+    let targetURLs: [URL]
     let requestDelete: ([URL]) -> Void
+    let resetProgress: ([URL]) -> Void
     let keyboardFocusChange: (Bool) -> Void
 
     init(
         model: ReaderViewModel,
         sidebarIsVisible: Binding<Bool>,
+        targetURLs: [URL],
         requestDelete: @escaping ([URL]) -> Void,
+        resetProgress: @escaping ([URL]) -> Void,
         keyboardFocusChange: @escaping (Bool) -> Void = { _ in }
     ) {
         self.model = model
         self._sidebarIsVisible = sidebarIsVisible
+        self.targetURLs = targetURLs
         self.requestDelete = requestDelete
+        self.resetProgress = resetProgress
         self.keyboardFocusChange = keyboardFocusChange
     }
 
@@ -101,9 +107,9 @@ struct ReaderToolbar: View {
             iconButton(
                 "最初に戻る",
                 systemImage: "backward.end",
-                action: model.goToFirstPage
+                action: { resetProgress(targetURLs) }
             )
-            .disabled(model.session == nil)
+            .disabled(targetURLs.isEmpty)
             .focused($focusedControl, equals: .firstPage)
 
             Divider().frame(height: 20)
@@ -136,14 +142,11 @@ struct ReaderToolbar: View {
             .focused($focusedControl, equals: .close)
 
             iconButton(
-                "このPDFをゴミ箱に入れる",
+                "選択中のPDFをゴミ箱に入れる",
                 systemImage: "trash",
-                action: {
-                    guard let url = model.session?.url else { return }
-                    requestDelete([url])
-                }
+                action: { requestDelete(targetURLs) }
             )
-            .disabled(model.session == nil)
+            .disabled(targetURLs.isEmpty)
             .focused($focusedControl, equals: .delete)
 
             iconButton(

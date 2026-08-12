@@ -282,6 +282,45 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(scannedRoots.count, 2)
     }
 
+    func testTrashRemovesSucceededFilesFromSelection() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let otherURL = rootURL.appending(path: "other.pdf")
+        let trash = FakeFileTrash()
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner, trashService: trash)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+        model.selectedNodeIDs = [
+            pdfURL.standardizedFileURL.path,
+            otherURL.standardizedFileURL.path
+        ]
+
+        _ = await model.trash(urls: [pdfURL])
+
+        // ゴミ箱へ移動済みのファイルはもう存在しないため、選択から外れているべき。
+        // 選択に残っていた別ファイルの選択状態は変わらない。
+        XCTAssertFalse(model.selectedNodeIDs.contains(pdfURL.standardizedFileURL.path))
+        XCTAssertTrue(model.selectedNodeIDs.contains(otherURL.standardizedFileURL.path))
+    }
+
+    func testTrashKeepsFailedFileInSelection() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let failingURL = rootURL.appending(path: "locked.pdf")
+        let trash = FakeFileTrash(failingURLs: [failingURL])
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner, trashService: trash)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+        model.selectedNodeIDs = [failingURL.standardizedFileURL.path]
+
+        let failureCount = await model.trash(urls: [failingURL])
+
+        // 削除に失敗したファイルはまだ存在するので、選択状態を維持してやり直せるようにする。
+        XCTAssertEqual(failureCount, 1)
+        XCTAssertTrue(model.selectedNodeIDs.contains(failingURL.standardizedFileURL.path))
+    }
+
     func testTrashWithEmptyInputDoesNothing() async throws {
         let trash = FakeFileTrash()
         let scanner = FakeDirectoryScanner(result: .success([]))
