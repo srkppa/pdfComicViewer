@@ -23,7 +23,8 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var zoomCommand = ZoomCommand(action: .fit, sequence: 0)
     @Published private(set) var fullScreenRequestSequence = 0
     @Published private(set) var pagePreviewSnapshot = PagePreviewSnapshot.empty
-    @Published var sidebarIsVisible = false
+    /// 起動直後からフォルダペインを見せておくため、既定で表示状態にする。
+    @Published var sidebarIsVisible = true
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
