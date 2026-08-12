@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 @MainActor
@@ -142,6 +141,8 @@ struct DirectorySidebarView: View {
             }
             .contextMenu(forSelectionType: String.self) { ids in
                 contextMenuItems(for: ids)
+            } primaryAction: { ids in
+                openPDF(forSelection: ids)
             }
         }
     }
@@ -165,6 +166,16 @@ struct DirectorySidebarView: View {
     private func openSelectedPDF() {
         guard model.selectedNodeIDs.count == 1,
               let id = model.selectedNodeIDs.first,
+              let node = model.nodes.firstNode(withID: id),
+              node.kind == .pdf else { return }
+        openPDF(node.url)
+    }
+
+    /// ダブルクリックで開く。`List` の `primaryAction` から呼ばれるため、
+    /// 行にジェスチャを貼らずに済み、シングルクリックの選択と競合しない。
+    private func openPDF(forSelection ids: Set<String>) {
+        guard ids.count == 1,
+              let id = ids.first,
               let node = model.nodes.firstNode(withID: id),
               node.kind == .pdf else { return }
         openPDF(node.url)
@@ -194,16 +205,6 @@ struct DirectorySidebarView: View {
             }
         }
         .contentShape(Rectangle())
-        // シングルクリックはListの選択処理にそのまま通す。
-        // `.onTapGesture` はクリックを消費するため、1クリックで開く形にすると
-        // 行の上では⌘・⇧クリックがListまで届かず複数選択ができなくなる。
-        .onTapGesture(count: 2) {
-            guard node.kind == .pdf,
-                  SidebarRowInteraction.shouldOpenPDF(modifiers: NSEvent.modifierFlags) else {
-                return
-            }
-            openPDF(node.url)
-        }
         .accessibilityLabel(node.name)
         .accessibilityAddTraits(node.kind == .pdf ? .isButton : [])
     }
