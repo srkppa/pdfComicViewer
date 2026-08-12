@@ -15,3 +15,41 @@ enum SeriesNavigation {
         return sortedURLs[nextIndex]
     }
 }
+
+protocol SeriesNavigating: Sendable {
+    /// 開いているPDFと同じフォルダ直下から、ファイル名順で次のPDFを探す。
+    /// サブフォルダはまたがない。見つからなければ`nil`。
+    func nextVolumeURL(after url: URL) async -> URL?
+}
+
+struct SeriesNavigator: SeriesNavigating {
+    func nextVolumeURL(after url: URL) async -> URL? {
+        let target = url.standardizedFileURL
+        let parent = target.deletingLastPathComponent()
+        let siblings = await Task.detached(priority: .userInitiated) {
+            Self.pdfSiblings(in: parent)
+        }.value
+        return SeriesNavigation.nextURL(after: target, in: siblings)
+    }
+
+    private static func pdfSiblings(in folder: URL) -> [URL] {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: folder,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return []
+        }
+        let pdfs = contents.filter { childURL in
+            guard let resourceValues = try? childURL.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+            ), resourceValues.isSymbolicLink != true, resourceValues.isDirectory != true else {
+                return false
+            }
+            return childURL.pathExtension.localizedCaseInsensitiveCompare("pdf") == .orderedSame
+        }
+        return pdfs.sorted {
+            $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending
+        }
+    }
+}
