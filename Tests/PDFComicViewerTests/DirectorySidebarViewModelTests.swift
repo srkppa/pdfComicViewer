@@ -7,7 +7,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let node = DirectoryTreeNode(url: rootURL.appending(path: "one.pdf"), kind: .pdf)
         let scanner = FakeDirectoryScanner(result: .success([node]))
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
 
         model.setRoot(rootURL)
         try await waitUntil { model.isLoading == false }
@@ -22,7 +22,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
     func testSettingSameRootDoesNotRescan() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let scanner = FakeDirectoryScanner(result: .success([]))
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
         model.setRoot(rootURL)
         try await waitUntil { model.isLoading == false }
 
@@ -37,7 +37,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let node = DirectoryTreeNode(url: rootURL.appending(path: "one.pdf"), kind: .pdf)
         let scanner = FakeDirectoryScanner(result: .success([node]))
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
         model.setRoot(rootURL)
         try await waitUntil { model.isLoading == false }
         let otherRoot = URL(fileURLWithPath: "/tmp/other")
@@ -58,7 +58,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         let scanner = FakeDirectoryScanner(result: .success([firstNode]))
         await scanner.setDelay(.milliseconds(100), forRoot: firstRoot.standardizedFileURL)
         await scanner.setResult(.success([secondNode]), forRoot: secondRoot.standardizedFileURL)
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
 
         model.setRoot(firstRoot)
         model.setRoot(secondRoot)
@@ -71,7 +71,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
     func testReloadRescansCurrentRoot() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let scanner = FakeDirectoryScanner(result: .success([]))
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
         model.setRoot(rootURL)
         try await waitUntil { model.isLoading == false }
 
@@ -83,7 +83,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
     }
 
     func testDisplayOptionsDefaultToNameAscendingAndHiddenDate() {
-        let model = DirectorySidebarViewModel(scanner: FakeDirectoryScanner(result: .success([])))
+        let model = makeModel(scanner: FakeDirectoryScanner(result: .success([])))
 
         XCTAssertEqual(model.sortKey, .name)
         XCTAssertEqual(model.sortDirection, .ascending)
@@ -95,7 +95,7 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         let nodeB = DirectoryTreeNode(url: rootURL.appending(path: "b.pdf"), kind: .pdf)
         let nodeA = DirectoryTreeNode(url: rootURL.appending(path: "a.pdf"), kind: .pdf)
         let scanner = FakeDirectoryScanner(result: .success([nodeB, nodeA]))
-        let model = DirectorySidebarViewModel(scanner: scanner)
+        let model = makeModel(scanner: scanner)
         model.setRoot(rootURL)
         try await waitUntil { model.isLoading == false }
 
@@ -104,6 +104,18 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         model.sortDirection = model.sortDirection.toggled
 
         XCTAssertEqual(model.sortedNodes.map(\.name), ["b.pdf", "a.pdf"])
+    }
+
+    private func makeModel(
+        scanner: any DirectoryScanning,
+        progressStore: any ReadingProgressStoring = FakeSidebarProgressStore(),
+        trashService: any FileTrashing = FakeFileTrash()
+    ) -> DirectorySidebarViewModel {
+        DirectorySidebarViewModel(
+            scanner: scanner,
+            progressStore: progressStore,
+            trashService: trashService
+        )
     }
 
     private func waitUntil(
@@ -118,6 +130,64 @@ final class DirectorySidebarViewModelTests: XCTestCase {
             }
             try await Task.sleep(for: .milliseconds(10))
         }
+    }
+}
+
+private actor FakeSidebarProgressStore: ReadingProgressStoring {
+    private var recordsByPath: [String: DocumentRecord] = [:]
+    private(set) var removedURLs: [URL] = []
+
+    init(records: [DocumentRecord] = []) {
+        for record in records {
+            recordsByPath[record.normalizedPath] = record
+        }
+    }
+
+    func load(for url: URL) throws -> DocumentRecord? {
+        recordsByPath[url.standardizedFileURL.path]
+    }
+
+    func save(_ record: DocumentRecord) throws {
+        recordsByPath[record.normalizedPath] = record
+    }
+
+    func allRecords() throws -> [DocumentRecord] {
+        Array(recordsByPath.values)
+    }
+
+    func remove(for url: URL) throws {
+        removedURLs.append(url)
+        recordsByPath[url.standardizedFileURL.path] = nil
+    }
+}
+
+private actor FakeFileTrash: FileTrashing {
+    private var failingURLs: Set<URL> = []
+    private(set) var trashedURLs: [URL] = []
+
+    init(failingURLs: Set<URL> = []) {
+        self.failingURLs = failingURLs
+    }
+
+    func trash(_ urls: [URL]) async -> [URL] {
+        trashedURLs.append(contentsOf: urls)
+        return urls.filter { failingURLs.contains($0) }
+    }
+}
+
+private extension DocumentRecord {
+    static func fixture(path: String, lastPageIndex: Int) -> DocumentRecord {
+        var preferences = DocumentPreferences.defaults
+        preferences.lastPageIndex = lastPageIndex
+        return DocumentRecord(
+            bookmarkData: Data("bookmark".utf8),
+            normalizedPath: path,
+            metadata: FileMetadata(
+                size: 1_024,
+                modificationDate: Date(timeIntervalSince1970: 1_700_000_000)
+            ),
+            preferences: preferences
+        )
     }
 }
 

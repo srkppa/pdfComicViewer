@@ -19,11 +19,19 @@ final class DirectorySidebarViewModel: ObservableObject {
     }
 
     private let scanner: any DirectoryScanning
+    private let progressStore: any ReadingProgressStoring
+    private let trashService: any FileTrashing
     private var scanTask: Task<Void, Never>?
     private var scanGeneration = 0
 
-    init(scanner: any DirectoryScanning = DirectoryScanner()) {
+    init(
+        scanner: any DirectoryScanning = DirectoryScanner(),
+        progressStore: any ReadingProgressStoring,
+        trashService: any FileTrashing = FileTrashService()
+    ) {
         self.scanner = scanner
+        self.progressStore = progressStore
+        self.trashService = trashService
     }
 
     func setRoot(_ url: URL) {

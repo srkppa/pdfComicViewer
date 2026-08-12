@@ -44,19 +44,6 @@ final class ReaderViewModel: ObservableObject {
         self.progressStore = progressStore
     }
 
-    static func live(fileManager: FileManager = .default) -> ReaderViewModel {
-        let supportDirectory = fileManager.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? fileManager.temporaryDirectory
-        return ReaderViewModel(
-            loader: PDFDocumentLoader(),
-            progressStore: FileReadingProgressStore(
-                fileURL: progressFileURL(applicationSupportDirectory: supportDirectory)
-            )
-        )
-    }
-
     static func progressFileURL(applicationSupportDirectory: URL) -> URL {
         applicationSupportDirectory
             .appendingPathComponent("com.srkppa.PDFComicViewer", isDirectory: true)

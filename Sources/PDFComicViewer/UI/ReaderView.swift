@@ -11,6 +11,7 @@ private enum FileImportKind: Equatable {
 @MainActor
 struct ReaderView: View {
     @ObservedObject var model: ReaderViewModel
+    @ObservedObject var sidebarModel: DirectorySidebarViewModel
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var fileImportKind: FileImportKind?
@@ -21,7 +22,6 @@ struct ReaderView: View {
     @State private var toolbarControlHasKeyboardFocus = false
     @State private var contextPageIndex: Int?
     @State private var hideControlsTask: Task<Void, Never>?
-    @StateObject private var sidebarModel = DirectorySidebarViewModel()
     @State private var sidebarWidth: CGFloat = 260
     @State private var sidebarWidthAtDragStart: CGFloat?
 

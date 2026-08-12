@@ -25,8 +25,26 @@ final class ApplicationTerminationCoordinator {
 }
 
 @MainActor
-private enum AppServices {
-    static let readerModel = ReaderViewModel.live()
+enum AppServices {
+    /// リーダーとサイドバーの両方が読書位置を書き換えるため、
+    /// ストアは必ず1インスタンスだけを共有する。
+    /// 別インスタンスにすると、actor内のキャッシュ同士が古い内容で
+    /// 上書きし合い、リセットや保存が消える。
+    static let progressStore: any ReadingProgressStoring = FileReadingProgressStore(
+        fileURL: ReaderViewModel.progressFileURL(
+            applicationSupportDirectory: FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first ?? FileManager.default.temporaryDirectory
+        )
+    )
+
+    static let readerModel = ReaderViewModel(
+        loader: PDFDocumentLoader(),
+        progressStore: progressStore
+    )
+
+    static let sidebarModel = DirectorySidebarViewModel(progressStore: progressStore)
 }
 
 @MainActor
@@ -50,14 +68,16 @@ final class PDFComicViewerAppDelegate: NSObject, NSApplicationDelegate {
 struct PDFComicViewerApp: App {
     @NSApplicationDelegateAdaptor(PDFComicViewerAppDelegate.self) private var appDelegate
     @StateObject private var model: ReaderViewModel
+    @StateObject private var sidebarModel: DirectorySidebarViewModel
 
     init() {
         _model = StateObject(wrappedValue: AppServices.readerModel)
+        _sidebarModel = StateObject(wrappedValue: AppServices.sidebarModel)
     }
 
     var body: some Scene {
         WindowGroup(AppConfiguration.applicationName) {
-            ReaderView(model: model)
+            ReaderView(model: model, sidebarModel: sidebarModel)
                 .frame(minWidth: 900, minHeight: 650)
                 .onOpenURL { url in
                     Task { await model.openExternalURL(url) }
