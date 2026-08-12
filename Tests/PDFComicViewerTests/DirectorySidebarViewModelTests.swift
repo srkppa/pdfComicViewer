@@ -106,6 +106,40 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(model.sortedNodes.map(\.name), ["b.pdf", "a.pdf"])
     }
 
+    func testSearchQueryDefaultsToEmpty() {
+        let model = makeModel(scanner: FakeDirectoryScanner(result: .success([])))
+
+        XCTAssertEqual(model.searchQuery, "")
+    }
+
+    func testDisplayedNodesAppliesSearchAndSort() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let onePiece = DirectoryTreeNode(url: rootURL.appending(path: "OnePiece.pdf"), kind: .pdf)
+        let naruto = DirectoryTreeNode(url: rootURL.appending(path: "Naruto.pdf"), kind: .pdf)
+        let scanner = FakeDirectoryScanner(result: .success([naruto, onePiece]))
+        let model = makeModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        XCTAssertEqual(model.displayedNodes.map(\.name), ["Naruto.pdf", "OnePiece.pdf"])
+
+        model.searchQuery = "one"
+
+        XCTAssertEqual(model.displayedNodes.map(\.name), ["OnePiece.pdf"])
+    }
+
+    func testSetRootResetsSearchQuery() async throws {
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner)
+        model.setRoot(URL(fileURLWithPath: "/tmp/comics"))
+        try await waitUntil { model.isLoading == false }
+        model.searchQuery = "something"
+
+        model.setRoot(URL(fileURLWithPath: "/tmp/other"))
+
+        XCTAssertEqual(model.searchQuery, "")
+    }
+
     func testPDFURLsExcludesFolders() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let pdfURL = rootURL.appending(path: "one.pdf")

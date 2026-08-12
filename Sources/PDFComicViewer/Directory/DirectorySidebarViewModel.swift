@@ -14,10 +14,18 @@ final class DirectorySidebarViewModel: ObservableObject {
     @Published var sortDirection: DirectorySortDirection = .ascending
     /// ツールバーからも選択対象を参照するため、Viewの`@State`ではなくここで持つ。
     @Published var selectedNodeIDs: Set<String> = []
+    /// 検索欄の入力。空ならフィルタなし。フォルダを切り替えたら空に戻す。
+    @Published var searchQuery: String = ""
 
     /// `sortKey` と `sortDirection` を適用した表示用のツリー。
     var sortedNodes: [DirectoryTreeNode] {
         nodes.sorted(by: sortKey, direction: sortDirection)
+    }
+
+    /// `searchQuery`による絞り込みと`sortKey`/`sortDirection`による並べ替えを
+    /// 両方適用した、実際にサイドバーへ渡す表示用のツリー。
+    var displayedNodes: [DirectoryTreeNode] {
+        nodes.filtered(byQuery: searchQuery).sorted(by: sortKey, direction: sortDirection)
     }
 
     private let scanner: any DirectoryScanning
@@ -40,6 +48,7 @@ final class DirectorySidebarViewModel: ObservableObject {
         let normalized = url.standardizedFileURL
         guard rootURL != normalized else { return }
         rootURL = normalized
+        searchQuery = ""
         reload()
     }
 
