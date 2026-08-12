@@ -6,6 +6,15 @@ final class DirectorySidebarViewModel: ObservableObject {
     @Published private(set) var nodes: [DirectoryTreeNode] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    /// 各行に最終更新日を表示するかどうか。常時表示ではなく、ヘッダーのメニューから切り替える。
+    @Published var showsModificationDate = false
+    /// フォルダ一覧の並べ替え条件。フォルダは常に先頭にまとまる。
+    @Published var sortOrder: DirectorySortOrder = .nameAscending
+
+    /// `sortOrder` を適用した表示用のツリー。
+    var sortedNodes: [DirectoryTreeNode] {
+        nodes.sorted(by: sortOrder)
+    }
 
     private let scanner: any DirectoryScanning
     private var scanTask: Task<Void, Never>?

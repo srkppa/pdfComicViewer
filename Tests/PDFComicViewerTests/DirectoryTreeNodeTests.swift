@@ -57,4 +57,63 @@ final class DirectoryTreeNodeTests: XCTestCase {
 
         XCTAssertNil(found)
     }
+
+    func testSortedByNameAscendingKeepsFoldersBeforeFiles() {
+        let nodes = [
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/b.pdf"), kind: .pdf),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Zeta"), kind: .folder),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/a.pdf"), kind: .pdf),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Alpha"), kind: .folder),
+        ]
+
+        let sorted = nodes.sorted(by: .nameAscending)
+
+        XCTAssertEqual(sorted.map(\.name), ["Alpha", "Zeta", "a.pdf", "b.pdf"])
+    }
+
+    func testSortedByNameDescendingKeepsFoldersBeforeFiles() {
+        let nodes = [
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/a.pdf"), kind: .pdf),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Alpha"), kind: .folder),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/b.pdf"), kind: .pdf),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/Zeta"), kind: .folder),
+        ]
+
+        let sorted = nodes.sorted(by: .nameDescending)
+
+        XCTAssertEqual(sorted.map(\.name), ["Zeta", "Alpha", "b.pdf", "a.pdf"])
+    }
+
+    func testSortedByModificationDateOrdersOldestAndNewestWithNilLast() {
+        let old = Date(timeIntervalSince1970: 1000)
+        let new = Date(timeIntervalSince1970: 2000)
+        let oldNode = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/old.pdf"), kind: .pdf, modificationDate: old
+        )
+        let newNode = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/new.pdf"), kind: .pdf, modificationDate: new
+        )
+        let unknownNode = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/unknown.pdf"), kind: .pdf
+        )
+        let nodes = [newNode, unknownNode, oldNode]
+
+        let ascending = nodes.sorted(by: .modificationDateAscending)
+        XCTAssertEqual(ascending.map(\.name), ["unknown.pdf", "old.pdf", "new.pdf"])
+
+        let descending = nodes.sorted(by: .modificationDateDescending)
+        XCTAssertEqual(descending.map(\.name), ["new.pdf", "old.pdf", "unknown.pdf"])
+    }
+
+    func testSortedAppliesRecursivelyToChildren() {
+        let child1 = DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/vol/b.pdf"), kind: .pdf)
+        let child2 = DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/vol/a.pdf"), kind: .pdf)
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/vol"), kind: .folder, children: [child1, child2]
+        )
+
+        let sorted = [folder].sorted(by: .nameAscending)
+
+        XCTAssertEqual(sorted.first?.children?.map(\.name), ["a.pdf", "b.pdf"])
+    }
 }

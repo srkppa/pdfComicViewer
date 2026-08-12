@@ -34,7 +34,9 @@ struct DirectoryScanner: DirectoryScanning {
         do {
             contents = try fileManager.contentsOfDirectory(
                 at: url,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                includingPropertiesForKeys: [
+                    .isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey,
+                ],
                 options: [.skipsHiddenFiles]
             )
         } catch {
@@ -46,18 +48,26 @@ struct DirectoryScanner: DirectoryScanning {
 
         for childURL in contents {
             guard let resourceValues = try? childURL.resourceValues(
-                forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .contentModificationDateKey]
             ), resourceValues.isSymbolicLink != true else {
                 continue
             }
+            let modificationDate = resourceValues.contentModificationDate
 
             if resourceValues.isDirectory == true {
                 let children = (try? scanChildren(of: childURL)) ?? []
                 folderNodes.append(
-                    DirectoryTreeNode(url: childURL, kind: .folder, children: children)
+                    DirectoryTreeNode(
+                        url: childURL,
+                        kind: .folder,
+                        modificationDate: modificationDate,
+                        children: children
+                    )
                 )
             } else if childURL.pathExtension.localizedCaseInsensitiveCompare("pdf") == .orderedSame {
-                pdfNodes.append(DirectoryTreeNode(url: childURL, kind: .pdf))
+                pdfNodes.append(
+                    DirectoryTreeNode(url: childURL, kind: .pdf, modificationDate: modificationDate)
+                )
             }
         }
 

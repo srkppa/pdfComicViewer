@@ -25,6 +25,19 @@ final class DirectoryScannerTests: XCTestCase {
         XCTAssertEqual(subNode.children?.first?.kind, .pdf)
     }
 
+    func testScanPopulatesModificationDateForFilesAndFolders() async throws {
+        let root = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try makeFile(named: "a-comic.pdf", in: root)
+        _ = try makeDirectory(named: "sub", in: root)
+
+        let nodes = try await DirectoryScanner().scan(rootURL: root)
+
+        for node in nodes {
+            XCTAssertNotNil(node.modificationDate, "\(node.name) の更新日が取得できていません")
+        }
+    }
+
     func testScanThrowsForUnreadableRoot() async throws {
         let missingRoot = FileManager.default.temporaryDirectory
             .appending(path: "DirectoryScannerTests-missing-\(UUID().uuidString)")

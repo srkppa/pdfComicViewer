@@ -82,6 +82,29 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(scannedRoots.count, 2)
     }
 
+    func testDisplayOptionsDefaultToNameAscendingAndHiddenDate() {
+        let model = DirectorySidebarViewModel(scanner: FakeDirectoryScanner(result: .success([])))
+
+        XCTAssertEqual(model.sortOrder, .nameAscending)
+        XCTAssertFalse(model.showsModificationDate)
+    }
+
+    func testSortedNodesReflectsSortOrder() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let nodeB = DirectoryTreeNode(url: rootURL.appending(path: "b.pdf"), kind: .pdf)
+        let nodeA = DirectoryTreeNode(url: rootURL.appending(path: "a.pdf"), kind: .pdf)
+        let scanner = FakeDirectoryScanner(result: .success([nodeB, nodeA]))
+        let model = DirectorySidebarViewModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        XCTAssertEqual(model.sortedNodes.map(\.name), ["a.pdf", "b.pdf"])
+
+        model.sortOrder = .nameDescending
+
+        XCTAssertEqual(model.sortedNodes.map(\.name), ["b.pdf", "a.pdf"])
+    }
+
     private func waitUntil(
         timeout: Duration = .seconds(2),
         condition: @escaping @MainActor () async -> Bool

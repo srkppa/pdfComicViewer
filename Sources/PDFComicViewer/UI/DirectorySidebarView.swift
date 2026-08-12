@@ -38,6 +38,7 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(ReaderTheme.primaryText)
                 .lineLimit(1)
             Spacer()
+            displayOptionsMenu
             Button(action: chooseFolder) {
                 Image(systemName: "folder")
                     .frame(width: 20, height: 20)
@@ -50,6 +51,28 @@ struct DirectorySidebarView: View {
             .nativeToolTip("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
         }
         .padding(10)
+    }
+
+    /// 更新日の表示切り替え・並べ替え条件をまとめたメニュー。
+    private var displayOptionsMenu: some View {
+        Menu {
+            Toggle("更新日を表示", isOn: $model.showsModificationDate)
+            Divider()
+            Picker("並べ替え", selection: $model.sortOrder) {
+                Text("名前（昇順）").tag(DirectorySortOrder.nameAscending)
+                Text("名前（降順）").tag(DirectorySortOrder.nameDescending)
+                Text("更新日（新しい順）").tag(DirectorySortOrder.modificationDateDescending)
+                Text("更新日（古い順）").tag(DirectorySortOrder.modificationDateAscending)
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 20, height: 20)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 20, height: 20)
+        .foregroundStyle(ReaderTheme.primaryText)
+        .help("表示オプション（更新日の表示・並べ替え）")
+        .nativeToolTip("表示オプション（更新日の表示・並べ替え）")
     }
 
     @ViewBuilder
@@ -72,7 +95,7 @@ struct DirectorySidebarView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            List(model.nodes, children: \.children, selection: $selectedNodeID) { node in
+            List(model.sortedNodes, children: \.children, selection: $selectedNodeID) { node in
                 row(for: node)
             }
             .listStyle(.sidebar)
@@ -103,6 +126,14 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
                 .fontWeight(isCurrent ? .semibold : .regular)
                 .lineLimit(1)
+            if model.showsModificationDate, let modificationDate = node.modificationDate {
+                Spacer(minLength: 8)
+                Text(modificationDate, style: .date)
+                    .font(.caption)
+                    .foregroundStyle(ReaderTheme.secondaryText)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
