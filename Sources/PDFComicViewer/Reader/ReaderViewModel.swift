@@ -9,6 +9,9 @@ struct ReplacementConfirmation {
 
 @MainActor
 final class ReaderViewModel: ObservableObject {
+    /// 保存失敗の警告文言。`persistDirtyRecords` が終了時に
+    /// 自分の警告だけを片付けられるよう、比較用に文言を1箇所へ集約する。
+    private static let saveFailureWarning = "閲覧状態を保存できませんでした。"
     @Published private(set) var session: DocumentSession?
     @Published private(set) var displayUnits: [DisplayUnit] = []
     @Published private(set) var currentUnitIndex = 0
@@ -421,11 +424,11 @@ final class ReaderViewModel: ObservableObject {
                 } catch is CancellationError {
                     return
                 } catch {
-                    self?.warningMessage = "閲覧状態を保存できませんでした。"
+                    self?.warningMessage = Self.saveFailureWarning
                 }
             }
         } catch {
-            warningMessage = "閲覧状態を保存できませんでした。"
+            warningMessage = Self.saveFailureWarning
         }
     }
 
@@ -448,7 +451,7 @@ final class ReaderViewModel: ObservableObject {
                 dirtyRecords[record.normalizedPath] = (saveGeneration, record)
             }
         } catch {
-            warningMessage = "閲覧状態を保存できませんでした。"
+            warningMessage = Self.saveFailureWarning
         }
         await persistDirtyRecords()
     }
@@ -469,6 +472,12 @@ final class ReaderViewModel: ObservableObject {
                 failed = true
             }
         }
-        warningMessage = failed ? "閲覧状態を保存できませんでした。" : nil
+        // 削除やリセットが自分の警告を出している最中に、保存成功で
+        // それを消してしまわないよう、自分が出した警告だけを片付ける。
+        if failed {
+            warningMessage = Self.saveFailureWarning
+        } else if warningMessage == Self.saveFailureWarning {
+            warningMessage = nil
+        }
     }
 }

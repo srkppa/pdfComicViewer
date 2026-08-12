@@ -67,9 +67,12 @@ final class DirectorySidebarViewModel: ObservableObject {
     /// 選択中のIDのうち、PDFのURLだけを返す。
     /// フォルダごとの削除は誤操作の影響が大きいため対象外にしている。
     func pdfURLs(for ids: Set<String>) -> [URL] {
+        // idsはSetなので走査順が不定。削除確認ダイアログはこの結果から
+        // 先頭数件だけを見せるため、順序をファイル名で固定しておく。
         ids.compactMap { nodes.firstNode(withID: $0) }
             .filter { $0.kind == .pdf }
             .map(\.url)
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     /// 保存済みの読書位置を先頭に戻す。戻り値は失敗件数。

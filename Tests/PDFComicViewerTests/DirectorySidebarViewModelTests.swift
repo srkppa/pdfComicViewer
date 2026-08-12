@@ -122,6 +122,26 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(urls, [pdfURL])
     }
 
+    func testPDFURLsAreSortedByFileNameRegardlessOfSetIterationOrder() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        // idsはSetを介するため走査順は不定になりうる。要素数を増やし、
+        // 偶然ソート済みの順で返ってしまう確率をほぼ0にする。
+        let names = [
+            "theta.pdf", "alpha.pdf", "mu.pdf", "beta.pdf",
+            "eta.pdf", "gamma.pdf", "zeta.pdf", "delta.pdf"
+        ]
+        let pdfs = names.map { DirectoryTreeNode(url: rootURL.appending(path: $0), kind: .pdf) }
+        let scanner = FakeDirectoryScanner(result: .success(pdfs))
+        let model = makeModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        let urls = model.pdfURLs(for: Set(pdfs.map(\.id)))
+
+        let expectedNames = names.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        XCTAssertEqual(urls.map(\.lastPathComponent), expectedNames)
+    }
+
     func testResetProgressSetsLastPageIndexToZero() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp/comics")
         let pdfURL = rootURL.appending(path: "one.pdf")

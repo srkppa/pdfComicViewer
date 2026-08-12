@@ -237,6 +237,7 @@ struct ReaderView: View {
         pointerIsNearBottom
             && model.session != nil
             && model.displayUnits.count > 1
+            && !model.isLoading
     }
 
     /// 下端から80pt以内にポインタがあるかどうかで表示を切り替える。
@@ -327,7 +328,10 @@ struct ReaderView: View {
             if seekBarIsShown {
                 ReaderSeekBar(model: model)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                    // warningBannerは下端固定で表示されるため、そのままだと
+                    // つまみの上に重なって掴めなくなる。バナー表示中は
+                    // その高さぶん余分に持ち上げて避ける。
+                    .padding(.bottom, model.warningMessage == nil ? 12 : 56)
                     .transition(.opacity)
             }
         }

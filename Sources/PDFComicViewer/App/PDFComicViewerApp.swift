@@ -25,7 +25,7 @@ final class ApplicationTerminationCoordinator {
 }
 
 @MainActor
-enum AppServices {
+private enum AppServices {
     /// リーダーとサイドバーの両方が読書位置を書き換えるため、
     /// ストアは必ず1インスタンスだけを共有する。
     /// 別インスタンスにすると、actor内のキャッシュ同士が古い内容で
