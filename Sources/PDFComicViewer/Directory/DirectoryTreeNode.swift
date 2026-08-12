@@ -69,6 +69,27 @@ extension [DirectoryTreeNode] {
         }
     }
 
+    /// クエリで絞り込んだコピーを返す。空文字（前後の空白を除去した上で）なら全件そのまま。
+    /// フォルダ名・ファイル名が部分一致（大小文字を無視）したノードを残す。
+    /// フォルダ自体がマッチしたら中身は絞らず全部残し、マッチしなければ子を
+    /// 再帰的に絞り込んで、何か残るフォルダだけを残す
+    /// （マッチしたファイルまでの経路を保つため）。
+    func filtered(byQuery query: String) -> [DirectoryTreeNode] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return self }
+        return compactMap { node -> DirectoryTreeNode? in
+            if node.name.localizedCaseInsensitiveContains(trimmed) {
+                return node
+            }
+            guard node.kind == .folder, let children = node.children else { return nil }
+            let filteredChildren = children.filtered(byQuery: trimmed)
+            guard !filteredChildren.isEmpty else { return nil }
+            var copy = node
+            copy.children = filteredChildren
+            return copy
+        }
+    }
+
     private func sortedByKey(
         _ key: DirectorySortKey,
         direction: DirectorySortDirection

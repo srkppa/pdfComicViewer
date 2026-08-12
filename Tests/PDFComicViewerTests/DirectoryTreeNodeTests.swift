@@ -121,4 +121,101 @@ final class DirectoryTreeNodeTests: XCTestCase {
         XCTAssertEqual(DirectorySortDirection.ascending.toggled, .descending)
         XCTAssertEqual(DirectorySortDirection.descending.toggled, .ascending)
     }
+
+    func testFilteredByQueryReturnsAllNodesForEmptyQuery() {
+        let nodes = [
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/a.pdf"), kind: .pdf),
+            DirectoryTreeNode(url: URL(fileURLWithPath: "/tmp/comics/b.pdf"), kind: .pdf)
+        ]
+
+        XCTAssertEqual(nodes.filtered(byQuery: ""), nodes)
+        XCTAssertEqual(nodes.filtered(byQuery: "   "), nodes)
+    }
+
+    func testFilteredByQueryMatchesFileNameCaseInsensitively() {
+        let match = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece.pdf"), kind: .pdf
+        )
+        let other = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto.pdf"), kind: .pdf
+        )
+
+        let filtered = [match, other].filtered(byQuery: "onepiece")
+
+        XCTAssertEqual(filtered, [match])
+    }
+
+    func testFilteredByQueryKeepsFolderThatMatchesWithAllChildren() {
+        let child1 = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece/1.pdf"), kind: .pdf
+        )
+        let child2 = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece/2.pdf"), kind: .pdf
+        )
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece"),
+            kind: .folder,
+            children: [child1, child2]
+        )
+        let other = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto.pdf"), kind: .pdf
+        )
+
+        let filtered = [folder, other].filtered(byQuery: "onepiece")
+
+        XCTAssertEqual(filtered, [folder])
+        XCTAssertEqual(filtered.first?.children, [child1, child2])
+    }
+
+    func testFilteredByQueryKeepsPathToMatchingDescendant() {
+        let target = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol/3巻.pdf"), kind: .pdf
+        )
+        let sibling = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol/1巻.pdf"), kind: .pdf
+        )
+        let volFolder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol"),
+            kind: .folder,
+            children: [sibling, target]
+        )
+        let seriesFolder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series"),
+            kind: .folder,
+            children: [volFolder]
+        )
+
+        let filtered = [seriesFolder].filtered(byQuery: "3巻")
+
+        XCTAssertEqual(filtered.map(\.name), ["Series"])
+        XCTAssertEqual(filtered.first?.children?.map(\.name), ["vol"])
+        XCTAssertEqual(filtered.first?.children?.first?.children, [target])
+    }
+
+    func testFilteredByQueryDropsFolderWithNoMatchingDescendants() {
+        let child = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto/1.pdf"), kind: .pdf
+        )
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto"),
+            kind: .folder,
+            children: [child]
+        )
+
+        let filtered = [folder].filtered(byQuery: "onepiece")
+
+        XCTAssertTrue(filtered.isEmpty)
+    }
+
+    func testFilteredByQueryReturnsEmptyForEmptyFolder() {
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Empty"),
+            kind: .folder,
+            children: []
+        )
+
+        let filtered = [folder].filtered(byQuery: "anything")
+
+        XCTAssertTrue(filtered.isEmpty)
+    }
 }
