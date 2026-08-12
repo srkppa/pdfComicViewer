@@ -8,6 +8,8 @@ struct DirectorySidebarView: View {
     let chooseFolder: () -> Void
     let openPDF: (URL) -> Void
     let hideSidebar: () -> Void
+    let resetProgress: ([URL]) -> Void
+    let requestDelete: ([URL]) -> Void
 
     @State private var selectedNodeIDs: Set<String> = []
 
@@ -139,6 +141,23 @@ struct DirectorySidebarView: View {
             .onKeyPress(.return) {
                 openSelectedPDF()
                 return .handled
+            }
+            .contextMenu(forSelectionType: String.self) { ids in
+                contextMenuItems(for: ids)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuItems(for ids: Set<String>) -> some View {
+        let urls = model.pdfURLs(for: ids)
+        if !urls.isEmpty {
+            Button("最初に戻る") {
+                resetProgress(urls)
+            }
+            Divider()
+            Button("ゴミ箱に入れる", role: .destructive) {
+                requestDelete(urls)
             }
         }
     }

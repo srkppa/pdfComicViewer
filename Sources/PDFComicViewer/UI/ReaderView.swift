@@ -8,6 +8,13 @@ private enum FileImportKind: Equatable {
     case folder
 }
 
+/// 削除確認ダイアログの対象。ダイアログは `ReaderView` に1つだけ置き、
+/// サイドバーの右クリックとツールバーのボタンの両方から使う。
+private struct PendingDeletion: Identifiable {
+    let id = UUID()
+    let urls: [URL]
+}
+
 @MainActor
 struct ReaderView: View {
     @ObservedObject var model: ReaderViewModel
@@ -27,6 +34,7 @@ struct ReaderView: View {
     @State private var readerAreaHeight: CGFloat = 0
     @State private var pointerIsNearBottom = false
     @State private var hideSeekBarTask: Task<Void, Never>?
+    @State private var pendingDeletion: PendingDeletion?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -36,7 +44,9 @@ struct ReaderView: View {
                     currentFileURL: model.session?.url,
                     chooseFolder: { fileImportKind = .folder },
                     openPDF: { url in Task { await model.open(url: url) } },
-                    hideSidebar: { model.sidebarIsVisible = false }
+                    hideSidebar: { model.sidebarIsVisible = false },
+                    resetProgress: resetProgress(for:),
+                    requestDelete: { urls in pendingDeletion = PendingDeletion(urls: urls) }
                 )
                 .frame(width: sidebarWidth)
                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -143,6 +153,18 @@ struct ReaderView: View {
             }
         } message: {
             Text(model.errorMessage ?? "別のPDFを選んでください。")
+        }
+        .alert(
+            deleteConfirmationTitle(for: pendingDeletion?.urls ?? []),
+            isPresented: deleteConfirmationIsPresented,
+            presenting: pendingDeletion
+        ) { deletion in
+            Button("ゴミ箱に入れる", role: .destructive) {
+                performDeletion(of: deletion.urls)
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: { deletion in
+            Text(deleteConfirmationMessage(for: deletion.urls))
         }
         .onChange(of: model.fileOpenRequestSequence) { _, _ in
             fileImportKind = .pdf
@@ -439,6 +461,17 @@ struct ReaderView: View {
         )
     }
 
+    private var deleteConfirmationIsPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingDeletion = nil
+                }
+            }
+        )
+    }
+
     /// PDF用・フォルダ用の `.fileImporter` を1つに統合するための表示状態。
     /// 同じビューに `.fileImporter` を複数重ねると、片方が発火しなくなることがあるため
     /// 「どちらを開こうとしているか」を単一の状態で表し、1箇所の `.fileImporter` に集約する。
@@ -487,6 +520,49 @@ struct ReaderView: View {
         }
         Task { await model.open(url: url) }
         return true
+    }
+
+    private func resetProgress(for urls: [URL]) {
+        let openURL = model.session?.url.standardizedFileURL
+        let storedURLs = urls.filter { $0.standardizedFileURL != openURL }
+        if urls.contains(where: { $0.standardizedFileURL == openURL }) {
+            model.goToFirstPage()
+        }
+        guard !storedURLs.isEmpty else { return }
+        Task {
+            let failureCount = await sidebarModel.resetProgress(for: storedURLs)
+            if failureCount > 0 {
+                model.warningMessage = "\(failureCount)件をリセットできませんでした。"
+            }
+        }
+    }
+
+    private func deleteConfirmationTitle(for urls: [URL]) -> String {
+        urls.count == 1
+            ? "「\(urls[0].lastPathComponent)」をゴミ箱に入れますか？"
+            : "\(urls.count)個のPDFをゴミ箱に入れますか？"
+    }
+
+    private func deleteConfirmationMessage(for urls: [URL]) -> String {
+        let listed = urls.prefix(5).map(\.lastPathComponent)
+        let remainder = urls.count - listed.count
+        let names = listed.joined(separator: "\n")
+        return remainder > 0 ? "\(names)\nほか\(remainder)件" : names
+    }
+
+    private func performDeletion(of urls: [URL]) {
+        Task {
+            // PDFKitがファイルを掴んだままにしないよう、
+            // 開いているPDFが対象なら先に閉じる。
+            let openURL = model.session?.url.standardizedFileURL
+            if urls.contains(where: { $0.standardizedFileURL == openURL }) {
+                await model.closeDocument()
+            }
+            let failureCount = await sidebarModel.trash(urls: urls)
+            if failureCount > 0 {
+                model.warningMessage = "\(failureCount)件を削除できませんでした。"
+            }
+        }
     }
 
     private func handleInput(_ action: ReaderInputAction) {
