@@ -245,7 +245,7 @@ EOF
 
 `Tests/PDFComicViewerTests/ReaderViewModelTests.swift` の最後のテストメソッドの直後（`@MainActor private final class FakePDFLoader` の定義より前）に追加する。
 
-テストで使う `FakePDFLoader` `FakeProgressStore` `DocumentSession.fixture` は同ファイル内に既に定義されている。`pageCount: 5` は既定の見開き設定（`.spread` / `.coverSingle`）で3つの表示単位（single(0), pair(1,2), pair(3,4)）になる。
+テストで使う `FakePDFLoader` `FakeProgressStore` `DocumentSession.fixture` は同ファイル内に既に定義されている。保存を検証するテストだけは実ファイルが要る。`currentRecord()` が `DocumentBookmarkService.makeBookmark(for:)` を呼び、存在しないパスでは例外になって保存が走らないため、既存の `makeTemporaryFileURL()` と `makeOpenedModel(pageCount:url:)` を使う。`pageCount: 5` は既定の見開き設定（`.spread` / `.coverSingle`）で3つの表示単位（single(0), pair(1,2), pair(3,4)）になる。
 
 ```swift
     func testJumpToUnitMovesToRequestedUnit() async {
@@ -306,13 +306,10 @@ EOF
         XCTAssertEqual(model.preferences.lastPageIndex, 0)
     }
 
-    func testGoToFirstPagePersistsResetPosition() async {
-        let store = FakeProgressStore()
-        let model = ReaderViewModel(
-            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
-            progressStore: store
-        )
-        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+    func testGoToFirstPagePersistsResetPosition() async throws {
+        let url = try makeTemporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (model, store) = await makeOpenedModel(pageCount: 5, url: url)
         model.next()
 
         model.goToFirstPage()
