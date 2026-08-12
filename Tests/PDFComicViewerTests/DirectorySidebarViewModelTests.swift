@@ -133,10 +133,11 @@ final class DirectorySidebarViewModelTests: XCTestCase {
             progressStore: store
         )
 
-        await model.resetProgress(for: [pdfURL])
+        let failureCount = await model.resetProgress(for: [pdfURL])
 
         let reloaded = try await store.load(for: pdfURL)
         XCTAssertEqual(reloaded?.preferences.lastPageIndex, 0)
+        XCTAssertEqual(failureCount, 0)
     }
 
     func testResetProgressIgnoresURLsWithoutRecord() async throws {
@@ -146,10 +147,45 @@ final class DirectorySidebarViewModelTests: XCTestCase {
             progressStore: store
         )
 
-        await model.resetProgress(for: [URL(fileURLWithPath: "/tmp/comics/unknown.pdf")])
+        let failureCount = await model.resetProgress(for: [URL(fileURLWithPath: "/tmp/comics/unknown.pdf")])
 
         let records = try await store.allRecords()
         XCTAssertTrue(records.isEmpty)
+        XCTAssertEqual(failureCount, 0)
+    }
+
+    func testResetProgressCountsSaveFailures() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: pdfURL.standardizedFileURL.path, lastPageIndex: 5)
+        ])
+        await store.setSaveError(DirectoryScanError.unreadableFolder)
+        let model = makeModel(
+            scanner: FakeDirectoryScanner(result: .success([])),
+            progressStore: store
+        )
+
+        let failureCount = await model.resetProgress(for: [pdfURL])
+
+        XCTAssertEqual(failureCount, 1)
+    }
+
+    func testResetProgressCountsLoadFailures() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: pdfURL.standardizedFileURL.path, lastPageIndex: 5)
+        ])
+        await store.setLoadError(DirectoryScanError.unreadableFolder)
+        let model = makeModel(
+            scanner: FakeDirectoryScanner(result: .success([])),
+            progressStore: store
+        )
+
+        let failureCount = await model.resetProgress(for: [pdfURL])
+
+        XCTAssertEqual(failureCount, 1)
     }
 
     func testTrashMovesFilesRemovesRecordsAndRescans() async throws {
@@ -200,6 +236,32 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(removed, [okURL])
     }
 
+    func testTrashRescansEvenWhenAllDeletionsFailed() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let urlA = rootURL.appending(path: "a.pdf")
+        let urlB = rootURL.appending(path: "b.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: urlA.standardizedFileURL.path, lastPageIndex: 1),
+            .fixture(path: urlB.standardizedFileURL.path, lastPageIndex: 2)
+        ])
+        let trash = FakeFileTrash(failingURLs: [urlA, urlB])
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner, progressStore: store, trashService: trash)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        let failureCount = await model.trash(urls: [urlA, urlB])
+        try await waitUntil { model.isLoading == false }
+
+        // 全滅しても再スキャンする、という設計上の決定を固定する。
+        // reload() が「一部成功時のみ」に変わってもここが検知する。
+        XCTAssertEqual(failureCount, 2)
+        let removed = await store.removedURLs
+        XCTAssertTrue(removed.isEmpty)
+        let scannedRoots = await scanner.scannedRootURLs
+        XCTAssertEqual(scannedRoots.count, 2)
+    }
+
     func testTrashWithEmptyInputDoesNothing() async throws {
         let trash = FakeFileTrash()
         let scanner = FakeDirectoryScanner(result: .success([]))
@@ -244,6 +306,8 @@ final class DirectorySidebarViewModelTests: XCTestCase {
 private actor FakeSidebarProgressStore: ReadingProgressStoring {
     private var recordsByPath: [String: DocumentRecord] = [:]
     private(set) var removedURLs: [URL] = []
+    var loadError: Error?
+    var saveError: Error?
 
     init(records: [DocumentRecord] = []) {
         for record in records {
@@ -252,10 +316,12 @@ private actor FakeSidebarProgressStore: ReadingProgressStoring {
     }
 
     func load(for url: URL) throws -> DocumentRecord? {
-        recordsByPath[url.standardizedFileURL.path]
+        if let loadError { throw loadError }
+        return recordsByPath[url.standardizedFileURL.path]
     }
 
     func save(_ record: DocumentRecord) throws {
+        if let saveError { throw saveError }
         recordsByPath[record.normalizedPath] = record
     }
 
@@ -266,6 +332,14 @@ private actor FakeSidebarProgressStore: ReadingProgressStoring {
     func remove(for url: URL) throws {
         removedURLs.append(url)
         recordsByPath[url.standardizedFileURL.path] = nil
+    }
+
+    func setLoadError(_ error: Error?) {
+        loadError = error
+    }
+
+    func setSaveError(_ error: Error?) {
+        saveError = error
     }
 }
 

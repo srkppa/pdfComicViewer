@@ -72,13 +72,31 @@ final class DirectorySidebarViewModel: ObservableObject {
             .map(\.url)
     }
 
-    /// 保存済みの読書位置を先頭に戻す。記録が無いPDFは元から先頭なので何もしない。
-    func resetProgress(for urls: [URL]) async {
+    /// 保存済みの読書位置を先頭に戻す。戻り値は失敗件数。
+    /// 記録が無いPDFは元から先頭で「何もしない」だけなので失敗として数えない。
+    /// 一方 load/save が例外を投げた場合はストアのI/O障害なので失敗として数える。
+    /// 件数は `trash(urls:)` と同じ理由で `errorMessage` には入れない
+    /// （`errorMessage` に入れるとツリー全体が差し替わって一覧が消えるため）。
+    @discardableResult
+    func resetProgress(for urls: [URL]) async -> Int {
+        var failureCount = 0
         for url in urls {
-            guard var record = try? await progressStore.load(for: url) else { continue }
+            let record: DocumentRecord?
+            do {
+                record = try await progressStore.load(for: url)
+            } catch {
+                failureCount += 1
+                continue
+            }
+            guard var record else { continue }
             record.preferences.lastPageIndex = 0
-            try? await progressStore.save(record)
+            do {
+                try await progressStore.save(record)
+            } catch {
+                failureCount += 1
+            }
         }
+        return failureCount
     }
 
     /// ゴミ箱へ移動し、成功した分のレコードを消してツリーを再スキャンする。
