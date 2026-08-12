@@ -855,13 +855,10 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.preferences.lastPageIndex, 0)
     }
 
-    func testGoToFirstPagePersistsResetPosition() async {
-        let store = FakeProgressStore()
-        let model = ReaderViewModel(
-            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
-            progressStore: store
-        )
-        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+    func testGoToFirstPagePersistsResetPosition() async throws {
+        let url = try makeTemporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let (model, store) = await makeOpenedModel(pageCount: 5, url: url)
         model.next()
 
         model.goToFirstPage()
