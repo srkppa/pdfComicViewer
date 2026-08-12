@@ -24,6 +24,9 @@ struct ReaderView: View {
     @State private var hideControlsTask: Task<Void, Never>?
     @State private var sidebarWidth: CGFloat = 260
     @State private var sidebarWidthAtDragStart: CGFloat?
+    @State private var readerAreaHeight: CGFloat = 0
+    @State private var pointerIsNearBottom = false
+    @State private var hideSeekBarTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -164,6 +167,7 @@ struct ReaderView: View {
         }
         .onDisappear {
             hideControlsTask?.cancel()
+            hideSeekBarTask?.cancel()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase != .active else { return }
@@ -198,6 +202,32 @@ struct ReaderView: View {
                     sidebarWidthAtDragStart = nil
                 }
         )
+    }
+
+    /// シークバーを実際に出してよいか。飛ぶ先が無いときは出さない。
+    private var seekBarIsShown: Bool {
+        pointerIsNearBottom
+            && model.session != nil
+            && model.displayUnits.count > 1
+    }
+
+    /// 下端から80pt以内にポインタがあるかどうかで表示を切り替える。
+    /// 出したまま消えるとつまみを掴めないので、離れてから0.4秒待って隠す。
+    private func updateSeekBarVisibility(isNearBottom: Bool) {
+        if isNearBottom {
+            hideSeekBarTask?.cancel()
+            hideSeekBarTask = nil
+            if !pointerIsNearBottom {
+                pointerIsNearBottom = true
+            }
+        } else if pointerIsNearBottom, hideSeekBarTask == nil {
+            hideSeekBarTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                pointerIsNearBottom = false
+                hideSeekBarTask = nil
+            }
+        }
     }
 
     private var readerArea: some View {
@@ -235,7 +265,10 @@ struct ReaderView: View {
                     && model.errorMessage == nil,
                 controlHasKeyboardFocus: toolbarControlHasKeyboardFocus,
                 excludedTopHeight: isFullScreen && controlsVisible ? 64 : 0,
-                excludedBottomHeight: model.warningMessage == nil ? 0 : 52,
+                excludedBottomHeight: max(
+                    model.warningMessage == nil ? 0 : 52,
+                    seekBarIsShown ? 64 : 0
+                ),
                 fullScreenRequestSequence: model.fullScreenRequestSequence,
                 action: handleInput,
                 interaction: revealControls,
@@ -246,6 +279,31 @@ struct ReaderView: View {
         .contextMenu {
             pageOverrideMenu
         }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            readerAreaHeight = height
+        }
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let location):
+                updateSeekBarVisibility(
+                    isNearBottom: readerAreaHeight > 0
+                        && location.y > readerAreaHeight - 80
+                )
+            case .ended:
+                updateSeekBarVisibility(isNearBottom: false)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if seekBarIsShown {
+                ReaderSeekBar(model: model)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: seekBarIsShown)
     }
 
     private var emptyState: some View {
