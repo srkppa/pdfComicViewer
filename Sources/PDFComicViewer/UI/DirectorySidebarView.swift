@@ -38,8 +38,9 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(ReaderTheme.primaryText)
                 .lineLimit(1)
             Spacer()
+            sortKeyButton
             sortDirectionButton
-            displayOptionsMenu
+            modificationDateToggleButton
             Button(action: chooseFolder) {
                 Image(systemName: "folder")
                     .frame(width: 20, height: 20)
@@ -54,27 +55,26 @@ struct DirectorySidebarView: View {
         .padding(10)
     }
 
-    /// 更新日の表示切り替え・並べ替えの基準をまとめたメニュー。向きの反転は`sortDirectionButton`で行う。
-    private var displayOptionsMenu: some View {
-        Menu {
-            Toggle("更新日を表示", isOn: $model.showsModificationDate)
-            Divider()
-            Picker("並べ替えの基準", selection: $model.sortKey) {
-                Text("名前").tag(DirectorySortKey.name)
-                Text("更新日").tag(DirectorySortKey.modificationDate)
-            }
+    /// 並べ替えの基準（名前・更新日）をワンクリックで切り替えるボタン。
+    private var sortKeyButton: some View {
+        let isName = model.sortKey == .name
+        let helpText = "並べ替えの基準: \(isName ? "名前" : "更新日")"
+            + "（クリックで\(isName ? "更新日" : "名前")順に切替）"
+        return Button {
+            model.sortKey = isName ? .modificationDate : .name
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: isName ? "textformat" : "clock")
                 .frame(width: 20, height: 20)
         }
-        .menuStyle(.borderlessButton)
-        .frame(width: 20, height: 20)
+        .buttonStyle(.plain)
         .foregroundStyle(ReaderTheme.primaryText)
-        .help("表示オプション（更新日の表示・並べ替えの基準）")
-        .nativeToolTip("表示オプション（更新日の表示・並べ替えの基準）")
+        .contentShape(Rectangle())
+        .accessibilityLabel(helpText)
+        .help(helpText)
+        .nativeToolTip(helpText)
     }
 
-    /// 並べ替えの向き（昇順・降順）だけをワンクリックで反転させるボタン。
+    /// 並べ替えの向き（昇順・降順）をワンクリックで反転させるボタン。
     private var sortDirectionButton: some View {
         let isAscending = model.sortDirection == .ascending
         let helpText = "並べ替えの向きを反転（現在: \(isAscending ? "昇順" : "降順")）"
@@ -88,6 +88,24 @@ struct DirectorySidebarView: View {
         .foregroundStyle(ReaderTheme.primaryText)
         .contentShape(Rectangle())
         .accessibilityLabel(isAscending ? "昇順で並べ替え中" : "降順で並べ替え中")
+        .help(helpText)
+        .nativeToolTip(helpText)
+    }
+
+    /// 更新日の表示・非表示だけを独立して切り替えるボタン。
+    private var modificationDateToggleButton: some View {
+        let isOn = model.showsModificationDate
+        let helpText = isOn ? "更新日を非表示にする" : "更新日を表示する"
+        return Button {
+            model.showsModificationDate.toggle()
+        } label: {
+            Image(systemName: "calendar")
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isOn ? ReaderTheme.accent : ReaderTheme.primaryText)
+        .contentShape(Rectangle())
+        .accessibilityLabel(helpText)
         .help(helpText)
         .nativeToolTip(helpText)
     }
@@ -135,25 +153,24 @@ struct DirectorySidebarView: View {
     private func row(for node: DirectoryTreeNode) -> some View {
         let isCurrent = node.kind == .pdf
             && node.url.standardizedFileURL == currentFileURL?.standardizedFileURL
-        // 更新日はファイル名と横幅を取り合わないよう、名前とは別の行として独立させる。
-        // こうすることで、ファイル名が長い場合でも更新日が隠れずに常に表示される。
-        return VStack(alignment: .leading, spacing: 1) {
-            HStack(spacing: 6) {
-                Image(systemName: node.kind == .folder ? "folder" : "doc.richtext")
-                    .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.secondaryText)
-                    .accessibilityHidden(true)
-                Text(node.name)
-                    .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
-                    .fontWeight(isCurrent ? .semibold : .regular)
-                    .lineLimit(1)
-            }
+        return HStack(spacing: 6) {
+            Image(systemName: node.kind == .folder ? "folder" : "doc.richtext")
+                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.secondaryText)
+                .accessibilityHidden(true)
+            Text(node.name)
+                .foregroundStyle(isCurrent ? ReaderTheme.accent : ReaderTheme.primaryText)
+                .fontWeight(isCurrent ? .semibold : .regular)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                // 更新日の表示幅を確保するため、名前側を優先的に省略させる。
+                .frame(maxWidth: .infinity, alignment: .leading)
             if model.showsModificationDate, let modificationDate = node.modificationDate {
                 Text(modificationDate, style: .date)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(ReaderTheme.secondaryText)
                     .lineLimit(1)
-                    // アイコン分だけ字下げして、名前の開始位置に揃える。
-                    .padding(.leading, 22)
+                    // 更新日自体は省略させず、常に全体を表示する。
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .contentShape(Rectangle())
