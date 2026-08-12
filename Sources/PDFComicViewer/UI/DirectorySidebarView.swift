@@ -8,7 +8,7 @@ struct DirectorySidebarView: View {
     let openPDF: (URL) -> Void
     let hideSidebar: () -> Void
 
-    @State private var selectedNodeID: String?
+    @State private var selectedNodeIDs: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,7 +130,7 @@ struct DirectorySidebarView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            List(model.sortedNodes, children: \.children, selection: $selectedNodeID) { node in
+            List(model.sortedNodes, children: \.children, selection: $selectedNodeIDs) { node in
                 row(for: node)
             }
             .listStyle(.sidebar)
@@ -142,10 +142,12 @@ struct DirectorySidebarView: View {
         }
     }
 
-    /// 選択中のノードがPDFなら開く。矢印キーで選んだ後にリターンキーで決定する導線。
+    /// 選択中のノードがPDF1つだけなら開く。矢印キーで選んだ後にリターンキーで決定する導線。
+    /// 複数選択中は、どれを開くべきか決められないので何もしない。
     private func openSelectedPDF() {
-        guard let selectedNodeID,
-              let node = model.nodes.firstNode(withID: selectedNodeID),
+        guard selectedNodeIDs.count == 1,
+              let id = selectedNodeIDs.first,
+              let node = model.nodes.firstNode(withID: id),
               node.kind == .pdf else { return }
         openPDF(node.url)
     }
