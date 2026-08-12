@@ -14,6 +14,10 @@ struct DirectorySidebarView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            if model.rootURL != nil {
+                searchField
+                Divider()
+            }
             content
         }
         .frame(maxHeight: .infinity)
@@ -53,6 +57,32 @@ struct DirectorySidebarView: View {
             .nativeToolTip("表示するフォルダを選び直す（新規フォルダの作成ではありません）")
         }
         .padding(10)
+    }
+
+    /// フォルダ選択後は常時表示する絞り込み検索欄。
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(ReaderTheme.secondaryText)
+                .accessibilityHidden(true)
+            TextField("検索...", text: $model.searchQuery)
+                .textFieldStyle(.plain)
+                .foregroundStyle(ReaderTheme.primaryText)
+            if !model.searchQuery.isEmpty {
+                Button {
+                    model.searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(ReaderTheme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("検索語をクリア")
+                .help("検索語をクリア")
+                .nativeToolTip("検索語をクリア")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     /// 並べ替えの基準（名前・更新日）をワンクリックで切り替えるボタン。
@@ -123,14 +153,14 @@ struct DirectorySidebarView: View {
                 .foregroundStyle(ReaderTheme.secondaryText)
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        } else if model.nodes.isEmpty {
+        } else if model.displayedNodes.isEmpty {
             Text("PDFが見つかりません")
                 .font(.callout)
                 .foregroundStyle(ReaderTheme.secondaryText)
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
-            List(model.sortedNodes, children: \.children, selection: $model.selectedNodeIDs) { node in
+            List(model.displayedNodes, children: \.children, selection: $model.selectedNodeIDs) { node in
                 row(for: node)
             }
             .listStyle(.sidebar)
