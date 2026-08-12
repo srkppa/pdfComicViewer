@@ -168,12 +168,20 @@ final class ReaderViewModel: ObservableObject {
     private func advanceToNextVolumeIfPossible() {
         guard nextVolumeTask == nil, let session else { return }
         let startingURL = session.url
+        // `loadGeneration`はopen/unlock/closeDocument/confirmReplacementの
+        // どれが起きても必ず増える（同じURLの開き直しも含む）ので、文書の
+        // ライフサイクルが動いたことを一括で検知できる。一方でページ送り
+        // （previous/next/jumpToUnit）はセッションを変えないため
+        // `loadGeneration`だけでは検知できず、`currentUnitIndex`も
+        // 別途見る必要がある。
+        let startingGeneration = loadGeneration
+        let startingUnitIndex = currentUnitIndex
         nextVolumeTask = Task { [weak self] in
             defer { self?.nextVolumeTask = nil }
             guard let self,
                   let nextURL = await self.seriesNavigator.nextVolumeURL(after: startingURL),
-                  // 探索中にユーザーが別の文書へ移動していたら、それを勝手に上書きしない。
-                  self.session?.url == startingURL else {
+                  self.loadGeneration == startingGeneration,
+                  self.currentUnitIndex == startingUnitIndex else {
                 return
             }
             await self.open(url: nextURL)

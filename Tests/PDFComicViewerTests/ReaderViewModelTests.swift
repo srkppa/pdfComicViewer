@@ -290,6 +290,36 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertNil(model.session)
     }
 
+    func testNextAtLastUnitDoesNotOpenNextVolumeIfPageChangedDuringLookup() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let nextURL = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(
+            nextURLsByCurrentURL: [url: nextURL],
+            delay: .milliseconds(50)
+        )
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 2, url: url)))
+        loader.resultsByURL[nextURL] = .ready(.fixture(pageCount: 1, url: nextURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+        model.setDisplayMode(.single)
+        model.next()
+
+        model.next()
+        // 探索が完了する前に、ユーザーが前のページへ戻ってしまうケース。
+        try await Task.sleep(for: .milliseconds(10))
+        model.previous()
+
+        // 探索が完了しても、既にユーザーが移動した先のページを勝手に上書きしない。
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(model.session?.url, url)
+        XCTAssertEqual(model.currentUnitIndex, 0)
+    }
+
     func testTogglingAlignmentKeepsCurrentPhysicalPage() async {
         let (model, _) = await makeOpenedModel(pageCount: 6, lastPageIndex: 2)
 
