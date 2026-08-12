@@ -40,15 +40,18 @@ struct ReaderToolbar: View {
     @Binding var sidebarIsVisible: Bool
     @FocusState private var focusedControl: FocusedReaderControl?
 
+    let requestDelete: ([URL]) -> Void
     let keyboardFocusChange: (Bool) -> Void
 
     init(
         model: ReaderViewModel,
         sidebarIsVisible: Binding<Bool>,
+        requestDelete: @escaping ([URL]) -> Void,
         keyboardFocusChange: @escaping (Bool) -> Void = { _ in }
     ) {
         self.model = model
         self._sidebarIsVisible = sidebarIsVisible
+        self.requestDelete = requestDelete
         self.keyboardFocusChange = keyboardFocusChange
     }
 
@@ -95,6 +98,14 @@ struct ReaderToolbar: View {
             .disabled(model.session == nil || model.preferences.displayMode == .single)
             .focused($focusedControl, equals: .alignment)
 
+            iconButton(
+                "最初に戻る",
+                systemImage: "backward.end",
+                action: model.goToFirstPage
+            )
+            .disabled(model.session == nil)
+            .focused($focusedControl, equals: .firstPage)
+
             Divider().frame(height: 20)
 
             iconButton("縮小", systemImage: "minus.magnifyingglass", shortcut: "⌘-", action: model.zoomOut)
@@ -123,6 +134,17 @@ struct ReaderToolbar: View {
             )
             .disabled(model.session == nil)
             .focused($focusedControl, equals: .close)
+
+            iconButton(
+                "このPDFをゴミ箱に入れる",
+                systemImage: "trash",
+                action: {
+                    guard let url = model.session?.url else { return }
+                    requestDelete([url])
+                }
+            )
+            .disabled(model.session == nil)
+            .focused($focusedControl, equals: .delete)
 
             iconButton(
                 sidebarIsVisible ? "フォルダ一覧を隠す" : "フォルダ一覧を表示",
@@ -191,10 +213,12 @@ private enum FocusedReaderControl: Hashable {
     case binding
     case displayMode
     case alignment
+    case firstPage
     case zoomOut
     case fit
     case zoomIn
     case close
+    case delete
     case sidebar
     case fullScreen
 }

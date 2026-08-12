@@ -71,6 +71,9 @@ struct ReaderView: View {
                         ReaderToolbar(
                             model: model,
                             sidebarIsVisible: $model.sidebarIsVisible,
+                            requestDelete: { urls in
+                                pendingDeletion = PendingDeletion(urls: urls)
+                            },
                             keyboardFocusChange: { focused in
                                 toolbarControlHasKeyboardFocus = focused
                             }
@@ -96,6 +99,9 @@ struct ReaderView: View {
                     ReaderToolbar(
                         model: model,
                         sidebarIsVisible: $model.sidebarIsVisible,
+                        requestDelete: { urls in
+                            pendingDeletion = PendingDeletion(urls: urls)
+                        },
                         keyboardFocusChange: { focused in
                             toolbarControlHasKeyboardFocus = focused
                         }
