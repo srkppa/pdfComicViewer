@@ -414,18 +414,23 @@ EOF
         XCTAssertEqual(records, [kept])
     }
 
-    func testRemoveMatchesRecordSavedUnderBookmarkedPath() async throws {
-        let file = temporaryDirectory.appending(path: "comic.pdf")
-        try Data([0]).write(to: file)
+    // 保存時のパスと削除時のパスをずらし、`normalizedPath` 一致では
+    // 成立しないようにする。こうしないとブックマーク解決の分岐を
+    // 消してもテストが通ってしまい、OR の片側が検証されない。
+    func testRemoveMatchesRecordResolvedByBookmarkAfterRename() async throws {
+        let originalFile = temporaryDirectory.appending(path: "comic.pdf")
+        let movedFile = temporaryDirectory.appending(path: "renamed-comic.pdf")
+        try Data([0]).write(to: originalFile)
         let record = makeRecord(
-            bookmarkData: try DocumentBookmarkService.makeBookmark(for: file),
-            path: file.standardizedFileURL.path,
+            bookmarkData: try DocumentBookmarkService.makeBookmark(for: originalFile),
+            path: originalFile.standardizedFileURL.path,
             lastPageIndex: 5
         )
         let store = FileReadingProgressStore(fileURL: progressFile)
         try await store.save(record)
+        try FileManager.default.moveItem(at: originalFile, to: movedFile)
 
-        try await store.remove(for: file)
+        try await store.remove(for: movedFile)
 
         let records = try await store.allRecords()
         XCTAssertTrue(records.isEmpty)
