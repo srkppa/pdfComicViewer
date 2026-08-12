@@ -63,4 +63,36 @@ final class DirectorySidebarViewModel: ObservableObject {
             }
         }
     }
+
+    /// 選択中のIDのうち、PDFのURLだけを返す。
+    /// フォルダごとの削除は誤操作の影響が大きいため対象外にしている。
+    func pdfURLs(for ids: Set<String>) -> [URL] {
+        ids.compactMap { nodes.firstNode(withID: $0) }
+            .filter { $0.kind == .pdf }
+            .map(\.url)
+    }
+
+    /// 保存済みの読書位置を先頭に戻す。記録が無いPDFは元から先頭なので何もしない。
+    func resetProgress(for urls: [URL]) async {
+        for url in urls {
+            guard var record = try? await progressStore.load(for: url) else { continue }
+            record.preferences.lastPageIndex = 0
+            try? await progressStore.save(record)
+        }
+    }
+
+    /// ゴミ箱へ移動し、成功した分のレコードを消してツリーを再スキャンする。
+    /// 戻り値は失敗件数。文言の組み立ては呼び出し側に任せる
+    /// （`errorMessage` に入れるとツリー全体が差し替わって一覧が消えるため）。
+    @discardableResult
+    func trash(urls: [URL]) async -> Int {
+        guard !urls.isEmpty else { return 0 }
+        let failures = Set(await trashService.trash(urls))
+        for url in urls where !failures.contains(url) {
+            try? await progressStore.remove(for: url)
+        }
+        // 全件失敗しても再スキャンする。実際のファイル状態に一覧を追従させるため。
+        reload()
+        return failures.count
+    }
 }

@@ -106,6 +106,114 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(model.sortedNodes.map(\.name), ["b.pdf", "a.pdf"])
     }
 
+    func testPDFURLsExcludesFolders() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let folderURL = rootURL.appending(path: "series")
+        let pdf = DirectoryTreeNode(url: pdfURL, kind: .pdf)
+        let folder = DirectoryTreeNode(url: folderURL, kind: .folder, children: [])
+        let scanner = FakeDirectoryScanner(result: .success([folder, pdf]))
+        let model = makeModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        let urls = model.pdfURLs(for: [pdf.id, folder.id])
+
+        XCTAssertEqual(urls, [pdfURL])
+    }
+
+    func testResetProgressSetsLastPageIndexToZero() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: pdfURL.standardizedFileURL.path, lastPageIndex: 42)
+        ])
+        let model = makeModel(
+            scanner: FakeDirectoryScanner(result: .success([])),
+            progressStore: store
+        )
+
+        await model.resetProgress(for: [pdfURL])
+
+        let reloaded = try await store.load(for: pdfURL)
+        XCTAssertEqual(reloaded?.preferences.lastPageIndex, 0)
+    }
+
+    func testResetProgressIgnoresURLsWithoutRecord() async throws {
+        let store = FakeSidebarProgressStore()
+        let model = makeModel(
+            scanner: FakeDirectoryScanner(result: .success([])),
+            progressStore: store
+        )
+
+        await model.resetProgress(for: [URL(fileURLWithPath: "/tmp/comics/unknown.pdf")])
+
+        let records = try await store.allRecords()
+        XCTAssertTrue(records.isEmpty)
+    }
+
+    func testTrashMovesFilesRemovesRecordsAndRescans() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let pdfURL = rootURL.appending(path: "one.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: pdfURL.standardizedFileURL.path, lastPageIndex: 3)
+        ])
+        let trash = FakeFileTrash()
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner, progressStore: store, trashService: trash)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        let failureCount = await model.trash(urls: [pdfURL])
+        try await waitUntil { model.isLoading == false }
+
+        XCTAssertEqual(failureCount, 0)
+        let trashed = await trash.trashedURLs
+        XCTAssertEqual(trashed, [pdfURL])
+        let removed = await store.removedURLs
+        XCTAssertEqual(removed, [pdfURL])
+        let scannedRoots = await scanner.scannedRootURLs
+        XCTAssertEqual(scannedRoots.count, 2)
+    }
+
+    func testTrashKeepsRecordsForFilesThatFailed() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let okURL = rootURL.appending(path: "ok.pdf")
+        let failingURL = rootURL.appending(path: "locked.pdf")
+        let store = FakeSidebarProgressStore(records: [
+            .fixture(path: okURL.standardizedFileURL.path, lastPageIndex: 1),
+            .fixture(path: failingURL.standardizedFileURL.path, lastPageIndex: 2)
+        ])
+        let trash = FakeFileTrash(failingURLs: [failingURL])
+        let model = makeModel(
+            scanner: FakeDirectoryScanner(result: .success([])),
+            progressStore: store,
+            trashService: trash
+        )
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        let failureCount = await model.trash(urls: [okURL, failingURL])
+
+        XCTAssertEqual(failureCount, 1)
+        let removed = await store.removedURLs
+        XCTAssertEqual(removed, [okURL])
+    }
+
+    func testTrashWithEmptyInputDoesNothing() async throws {
+        let trash = FakeFileTrash()
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner, trashService: trash)
+        model.setRoot(URL(fileURLWithPath: "/tmp/comics"))
+        try await waitUntil { model.isLoading == false }
+
+        let failureCount = await model.trash(urls: [])
+
+        XCTAssertEqual(failureCount, 0)
+        let scannedRoots = await scanner.scannedRootURLs
+        XCTAssertEqual(scannedRoots.count, 1)
+    }
+
     private func makeModel(
         scanner: any DirectoryScanning,
         progressStore: any ReadingProgressStoring = FakeSidebarProgressStore(),
