@@ -796,6 +796,80 @@ final class ReaderViewModelTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
     }
+
+    func testJumpToUnitMovesToRequestedUnit() async {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
+            progressStore: FakeProgressStore()
+        )
+        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+
+        model.jumpToUnit(index: 2)
+
+        XCTAssertEqual(model.currentUnitIndex, 2)
+        XCTAssertEqual(model.currentPhysicalPage, 3)
+        XCTAssertEqual(model.preferences.lastPageIndex, 3)
+    }
+
+    func testJumpToUnitClampsOutOfRangeIndexes() async {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
+            progressStore: FakeProgressStore()
+        )
+        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+        let lastIndex = model.displayUnits.count - 1
+
+        model.jumpToUnit(index: 99)
+        XCTAssertEqual(model.currentUnitIndex, lastIndex)
+
+        model.jumpToUnit(index: -4)
+        XCTAssertEqual(model.currentUnitIndex, 0)
+    }
+
+    func testJumpToUnitDoesNothingWithoutDocument() {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 1))),
+            progressStore: FakeProgressStore()
+        )
+
+        model.jumpToUnit(index: 3)
+
+        XCTAssertEqual(model.currentUnitIndex, 0)
+        XCTAssertEqual(model.currentPhysicalPage, 0)
+    }
+
+    func testGoToFirstPageReturnsToFirstUnit() async {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
+            progressStore: FakeProgressStore()
+        )
+        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+        model.next()
+        model.next()
+        XCTAssertNotEqual(model.currentUnitIndex, 0)
+
+        model.goToFirstPage()
+
+        XCTAssertEqual(model.currentUnitIndex, 0)
+        XCTAssertEqual(model.currentPhysicalPage, 0)
+        XCTAssertEqual(model.preferences.lastPageIndex, 0)
+    }
+
+    func testGoToFirstPagePersistsResetPosition() async {
+        let store = FakeProgressStore()
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 5))),
+            progressStore: store
+        )
+        await model.open(url: URL(fileURLWithPath: "/tmp/comic.pdf"))
+        model.next()
+
+        model.goToFirstPage()
+        await model.flushPendingSaves()
+
+        let saved = await store.savedRecords.last
+        XCTAssertEqual(saved?.preferences.lastPageIndex, 0)
+    }
 }
 
 @MainActor

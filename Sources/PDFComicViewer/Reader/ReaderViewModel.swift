@@ -173,6 +173,23 @@ final class ReaderViewModel: ObservableObject {
         scheduleSave()
     }
 
+    /// シークバーや「最初に戻る」から任意の表示単位へ飛ぶ。
+    /// 範囲外の指定は端にクリップし、呼び出し側にチェックを強いない。
+    func jumpToUnit(index: Int) {
+        guard !displayUnits.isEmpty else { return }
+        let target = min(max(index, 0), displayUnits.count - 1)
+        guard target != currentUnitIndex else { return }
+        currentUnitIndex = target
+        updateCurrentPageFromUnit()
+        schedulePagePreviews()
+        fitToWindow()
+        scheduleSave()
+    }
+
+    func goToFirstPage() {
+        jumpToUnit(index: 0)
+    }
+
     func setDisplayMode(_ mode: DisplayMode) {
         guard preferences.displayMode != mode else { return }
         preferences.displayMode = mode
