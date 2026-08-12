@@ -585,12 +585,27 @@ Expected: FAIL（`extra argument 'seriesNavigator' in call` などのビルド�
     /// 最後のページで「次へ」を押したときに、同じフォルダの次のPDFへ自動的に進む。
     /// 見つからなければ何もしない。探索中の連打で二重に始めないよう
     /// `nextVolumeTask`でガードする。
+    ///
+    /// 探索は非同期（ディレクトリI/O）なので、結果が返るまでの間にユーザーが
+    /// 別の操作をしている可能性がある。`open(url:)`を呼ぶ前に、探索開始時と
+    /// 状態が変わっていないか2つの観点で再確認する。
+    /// - `loadGeneration`: open/unlock/closeDocument/confirmReplacementの
+    ///   どれが起きても必ず増えるため、文書のライフサイクルが動いたこと
+    ///   （別の文書を開いた、閉じた、同じURLを開き直した、など）を一括で
+    ///   検知できる。
+    /// - `currentUnitIndex`: `previous()`や`jumpToUnit()`によるページ送りは
+    ///   `loadGeneration`を変えないため、別途チェックが要る。
     private func advanceToNextVolumeIfPossible() {
         guard nextVolumeTask == nil, let session else { return }
+        let startingURL = session.url
+        let startingGeneration = loadGeneration
+        let startingUnitIndex = currentUnitIndex
         nextVolumeTask = Task { [weak self] in
             defer { self?.nextVolumeTask = nil }
             guard let self,
-                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: session.url) else {
+                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: startingURL),
+                  self.loadGeneration == startingGeneration,
+                  self.currentUnitIndex == startingUnitIndex else {
                 return
             }
             await self.open(url: nextURL)
