@@ -320,6 +320,53 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.currentUnitIndex, 0)
     }
 
+    func testNextAtLastUnitDoesNotOpenNextVolumeIfUnitCountChangedDuringLookup() async throws {
+        // 10ページ・見開き・shifted配置なら pair(0,1)…pair(8,9) の5単位で、
+        // 最後の単位（index 4、アンカーページ8）にいる。ここでtoggleAlignment()
+        // すると coverSingle 配置に変わり single(0), pair(1,2)…pair(7,8),
+        // single(9) の6単位に組み直される。ページ8を含む単位は pair(7,8) で
+        // 偶然にも同じindex 4に復元されるが、6単位になった今は最後の単位は
+        // index 5であり、もう「最後のページ」ではない。
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let nextURL = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(
+            nextURLsByCurrentURL: [url: nextURL],
+            delay: .milliseconds(50)
+        )
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 10, url: url)))
+        loader.resultsByURL[nextURL] = .ready(.fixture(pageCount: 1, url: nextURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+        model.toggleAlignment()
+        XCTAssertEqual(model.preferences.alignment, .shifted)
+        XCTAssertEqual(model.displayUnits.count, 5)
+        model.jumpToUnit(index: model.displayUnits.count - 1)
+        XCTAssertEqual(model.currentUnitIndex, 4)
+        XCTAssertEqual(model.currentPhysicalPage, 8)
+
+        model.next()
+        // 探索が完了する前に、ユーザーがcoverSingle配置へ切り替えてしまうケース。
+        // `loadGeneration`は変わらず、`currentUnitIndex`もたまたま4のまま
+        // 復元されるが、単位の総数が5から6へ変わっているため、もう最後の
+        // 単位ではない。
+        try await Task.sleep(for: .milliseconds(10))
+        model.toggleAlignment()
+        XCTAssertEqual(model.preferences.alignment, .coverSingle)
+        XCTAssertEqual(model.displayUnits.count, 6)
+        XCTAssertEqual(model.currentUnitIndex, 4)
+
+        // 探索が完了しても、既に最後の単位ではなくなった状態で次巻を開かない。
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(model.session?.url, url)
+        let requested = await navigator.requestedURLs
+        XCTAssertEqual(requested, [url])
+    }
+
     func testTogglingAlignmentKeepsCurrentPhysicalPage() async {
         let (model, _) = await makeOpenedModel(pageCount: 6, lastPageIndex: 2)
 

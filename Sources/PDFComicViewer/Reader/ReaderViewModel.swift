@@ -165,15 +165,25 @@ final class ReaderViewModel: ObservableObject {
     /// 最後のページで「次へ」を押したときに、同じフォルダの次のPDFへ自動的に進む。
     /// 見つからなければ何もしない。探索中の連打で二重に始めないよう
     /// `nextVolumeTask`でガードする。
+    ///
+    /// 探索は非同期（ディレクトリI/O）なので、結果が返るまでの間にユーザーが
+    /// 別の操作をしている可能性がある。`open(url:)`を呼ぶ前に、探索開始時と
+    /// 状態が変わっていないか3つの観点で再確認する。
+    /// - `loadGeneration`: open/unlock/cancelUnlock/closeDocument/confirmReplacementの
+    ///   どれが起きても必ず増えるため、文書のライフサイクルが動いたこと
+    ///   （別の文書を開いた、閉じた、同じURLを開き直した、など）を一括で
+    ///   検知できる。
+    /// - `currentUnitIndex`: `previous()`や`jumpToUnit()`によるページ送りは
+    ///   `loadGeneration`を変えないため、別途チェックが要る。
+    /// - `currentUnitIndex == displayUnits.count - 1`: `setDisplayMode`/
+    ///   `toggleAlignment`/`setPageOverride`は`rebuildKeepingCurrentPage()`を
+    ///   経由して`displayUnits`を組み直すが、`loadGeneration`を変えない。
+    ///   組み直し後に同じ`currentUnitIndex`へたまたま復元されても、総数が
+    ///   変わっていれば「最後のページ」ではなくなっているため、実際に最後の
+    ///   単位にいるかどうかを直接確認する。
     private func advanceToNextVolumeIfPossible() {
         guard nextVolumeTask == nil, let session else { return }
         let startingURL = session.url
-        // `loadGeneration`はopen/unlock/closeDocument/confirmReplacementの
-        // どれが起きても必ず増える（同じURLの開き直しも含む）ので、文書の
-        // ライフサイクルが動いたことを一括で検知できる。一方でページ送り
-        // （previous/next/jumpToUnit）はセッションを変えないため
-        // `loadGeneration`だけでは検知できず、`currentUnitIndex`も
-        // 別途見る必要がある。
         let startingGeneration = loadGeneration
         let startingUnitIndex = currentUnitIndex
         nextVolumeTask = Task { [weak self] in
@@ -181,7 +191,8 @@ final class ReaderViewModel: ObservableObject {
             guard let self,
                   let nextURL = await self.seriesNavigator.nextVolumeURL(after: startingURL),
                   self.loadGeneration == startingGeneration,
-                  self.currentUnitIndex == startingUnitIndex else {
+                  self.currentUnitIndex == startingUnitIndex,
+                  self.currentUnitIndex == self.displayUnits.count - 1 else {
                 return
             }
             await self.open(url: nextURL)
