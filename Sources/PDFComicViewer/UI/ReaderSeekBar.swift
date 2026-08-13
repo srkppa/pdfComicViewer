@@ -26,10 +26,23 @@ struct ReaderSeekBar: View {
                     }
                 }
             )
-            // 綴じ方向が変わるたびにSliderを作り直す。既存のSliderへ値だけ
-            // 差し替えるパスでは、AppKit側の描画更新が反映されないことがあるため、
-            // ビューごと作り直して確実に正しい向きで初期化させる。
-            .id(model.preferences.binding)
+            // 右綴じでは1ページ目を右端に置く。macOSのSliderは常に左端から
+            // 現在値までを塗るため、値の反転だけでは塗りの向きが逆に残る。
+            // Slider自体を水平反転させ、つまみ・塗り・ドラッグ方向を揃える。
+            // ラベルまで反転しないよう、Sliderにだけ掛けること。
+            .scaleEffect(
+                x: SeekBarPresentation.horizontalScale(for: model.preferences.binding),
+                y: 1
+            )
+            // つまみを直接掴む最初の1回は、AppKitがまだ「ドラッグ開始」と
+            // 認識できず`onEditingChanged`が発火しないことがある。SwiftUI側で
+            // 独立にmouseDownを検知し、その保険としてドラッグ中扱いにする
+            // （`.simultaneousGesture`なのでSliderの標準動作は妨げない）。
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in onDraggingChanged(true) }
+                    .onEnded { _ in onDraggingChanged(false) }
+            )
             .accessibilityLabel("ページ位置")
 
             Text(labelText)
@@ -63,8 +76,7 @@ struct ReaderSeekBar: View {
             get: {
                 draggingValue ?? SeekBarPresentation.sliderValue(
                     unitIndex: model.currentUnitIndex,
-                    unitCount: unitCount,
-                    binding: model.preferences.binding
+                    unitCount: unitCount
                 )
             },
             set: { newValue in
@@ -87,8 +99,7 @@ struct ReaderSeekBar: View {
     private func targetUnitIndex(for value: Double) -> Int {
         SeekBarPresentation.unitIndex(
             sliderValue: value,
-            unitCount: unitCount,
-            binding: model.preferences.binding
+            unitCount: unitCount
         )
     }
 
