@@ -207,6 +207,95 @@ final class DirectoryTreeNodeTests: XCTestCase {
         XCTAssertTrue(filtered.isEmpty)
     }
 
+    func testFlattenedPDFMatchesReturnsEmptyForEmptyQuery() {
+        let pdf = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/a.pdf"), kind: .pdf
+        )
+
+        // 空クエリのときは呼び出し側が絞り込み前のツリーを使う想定なので、
+        // ここでは何も返さない。
+        XCTAssertTrue([pdf].flattenedPDFMatches(byQuery: "").isEmpty)
+        XCTAssertTrue([pdf].flattenedPDFMatches(byQuery: "   ").isEmpty)
+    }
+
+    func testFlattenedPDFMatchesCollapsesNestedFoldersIntoAFlatList() {
+        let deep = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol/3巻.pdf"), kind: .pdf
+        )
+        let sibling = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol/1巻.pdf"), kind: .pdf
+        )
+        let volFolder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/vol"),
+            kind: .folder,
+            children: [sibling, deep]
+        )
+        let seriesFolder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series"),
+            kind: .folder,
+            children: [volFolder]
+        )
+
+        let matches = [seriesFolder].flattenedPDFMatches(byQuery: "3巻")
+
+        // フォルダは一切含まれず、マッチしたPDFだけが一列に並ぶ。
+        XCTAssertEqual(matches.map(\.name), ["3巻.pdf"])
+        XCTAssertTrue(matches.allSatisfy { $0.kind == .pdf })
+    }
+
+    func testFlattenedPDFMatchesIncludesEveryPDFUnderAMatchingFolder() {
+        let first = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece/1.pdf"), kind: .pdf
+        )
+        let nested = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece/extra/2.pdf"), kind: .pdf
+        )
+        let extraFolder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece/extra"),
+            kind: .folder,
+            children: [nested]
+        )
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/OnePiece"),
+            kind: .folder,
+            children: [first, extraFolder]
+        )
+
+        let matches = [folder].flattenedPDFMatches(byQuery: "onepiece")
+
+        // フォルダ名が一致したら、その配下のPDFは入れ子の奥まですべて拾う。
+        XCTAssertEqual(Set(matches.map(\.name)), ["1.pdf", "2.pdf"])
+    }
+
+    func testFlattenedPDFMatchesStripChildrenSoNoDisclosureTriangleAppears() {
+        let child = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series/1.pdf"), kind: .pdf
+        )
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Series"),
+            kind: .folder,
+            children: [child]
+        )
+
+        let matches = [folder].flattenedPDFMatches(byQuery: "series")
+
+        // childrenがnilでないとListが折りたたみ三角を描いてしまう。
+        XCTAssertTrue(matches.allSatisfy { $0.children == nil })
+    }
+
+    func testFlattenedPDFMatchesReturnsEmptyWhenNothingMatches() {
+        let child = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto/1.pdf"), kind: .pdf
+        )
+        let folder = DirectoryTreeNode(
+            url: URL(fileURLWithPath: "/tmp/comics/Naruto"),
+            kind: .folder,
+            children: [child]
+        )
+
+        XCTAssertTrue([folder].flattenedPDFMatches(byQuery: "onepiece").isEmpty)
+    }
+
     func testFilteredByQueryReturnsEmptyForEmptyFolder() {
         let folder = DirectoryTreeNode(
             url: URL(fileURLWithPath: "/tmp/comics/Empty"),

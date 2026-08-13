@@ -223,8 +223,21 @@ struct DirectorySidebarView: View {
                 .fontWeight(isCurrent ? .semibold : .regular)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                // 更新日の表示幅を確保するため、名前側を優先的に省略させる。
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // 幅が足りないときは、親フォルダ名より先に削られないようにする。
+                .layoutPriority(1)
+            if let parentName = SearchResultPresentation.parentFolderName(
+                nodeURL: node.url,
+                rootURL: model.rootURL,
+                searchQuery: model.searchQuery
+            ) {
+                Text(parentName)
+                    .font(.caption)
+                    .foregroundStyle(ReaderTheme.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            // 更新日を右端に寄せる。幅が足りなければここが先に潰れる。
+            Spacer(minLength: 6)
             if model.showsModificationDate, let modificationDate = node.modificationDate {
                 Text(modificationDate, style: .date)
                     .font(.caption)

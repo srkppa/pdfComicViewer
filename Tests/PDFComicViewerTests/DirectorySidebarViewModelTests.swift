@@ -128,6 +128,33 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(model.displayedNodes.map(\.name), ["OnePiece.pdf"])
     }
 
+    func testDisplayedNodesFlattensNestedMatchesWhileSearching() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let deep = DirectoryTreeNode(
+            url: rootURL.appending(path: "Series/vol/3巻.pdf"), kind: .pdf
+        )
+        let volFolder = DirectoryTreeNode(
+            url: rootURL.appending(path: "Series/vol"), kind: .folder, children: [deep]
+        )
+        let seriesFolder = DirectoryTreeNode(
+            url: rootURL.appending(path: "Series"), kind: .folder, children: [volFolder]
+        )
+        let scanner = FakeDirectoryScanner(result: .success([seriesFolder]))
+        let model = makeModel(scanner: scanner)
+        model.setRoot(rootURL)
+        try await waitUntil { model.isLoading == false }
+
+        // 検索していないときは階層をそのまま見せる。
+        XCTAssertEqual(model.displayedNodes.map(\.name), ["Series"])
+
+        model.searchQuery = "3巻"
+
+        // 検索中はフォルダを畳んで、一致したPDFを直接並べる。
+        // 階層のままだとListの折りたたみ三角の中に隠れてしまうため。
+        XCTAssertEqual(model.displayedNodes.map(\.name), ["3巻.pdf"])
+        XCTAssertTrue(model.displayedNodes.allSatisfy { $0.children == nil })
+    }
+
     func testSetRootResetsSearchQuery() async throws {
         let scanner = FakeDirectoryScanner(result: .success([]))
         let model = makeModel(scanner: scanner)

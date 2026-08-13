@@ -22,10 +22,19 @@ final class DirectorySidebarViewModel: ObservableObject {
         nodes.sorted(by: sortKey, direction: sortDirection)
     }
 
-    /// `searchQuery`による絞り込みと`sortKey`/`sortDirection`による並べ替えを
-    /// 両方適用した、実際にサイドバーへ渡す表示用のツリー。
+    /// 実際にサイドバーへ渡す表示用のツリー。
+    ///
+    /// 検索していないときは階層をそのまま見せる。検索中は階層を畳んで、
+    /// 一致したPDFを一列に並べる——SwiftUIの`List(children:)`は折りたたみ
+    /// 状態を外から開けないため、階層を保つと一致したPDFが閉じた三角の
+    /// 中に隠れて見えないまま終わってしまうため。
     var displayedNodes: [DirectoryTreeNode] {
-        nodes.filtered(byQuery: searchQuery).sorted(by: sortKey, direction: sortDirection)
+        let trimmed = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return nodes.sorted(by: sortKey, direction: sortDirection)
+        }
+        return nodes.flattenedPDFMatches(byQuery: trimmed)
+            .sorted(by: sortKey, direction: sortDirection)
     }
 
     private let scanner: any DirectoryScanning

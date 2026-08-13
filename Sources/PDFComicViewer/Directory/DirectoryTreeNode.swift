@@ -90,6 +90,33 @@ extension [DirectoryTreeNode] {
         }
     }
 
+    /// クエリに一致したPDFだけを、フォルダ階層を畳んで一列にして返す。
+    /// 空クエリなら空配列（呼び出し側が絞り込み前のツリーを使う想定）。
+    ///
+    /// SwiftUIの`List(children:)`は折りたたみ状態を外から開けないため、
+    /// 階層を保ったまま絞り込むと、一致したPDFが閉じた三角の中に隠れて
+    /// 見えない。検索中だけ階層を畳んで、結果を直接並べる。
+    func flattenedPDFMatches(byQuery query: String) -> [DirectoryTreeNode] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return filtered(byQuery: trimmed).flattenedPDFs()
+    }
+
+    /// ツリーを深さ優先でたどり、PDFノードだけを集める。
+    /// `children`は必ず`nil`にして、Listに折りたたみ三角を描かせない。
+    private func flattenedPDFs() -> [DirectoryTreeNode] {
+        flatMap { node -> [DirectoryTreeNode] in
+            switch node.kind {
+            case .pdf:
+                var leaf = node
+                leaf.children = nil
+                return [leaf]
+            case .folder:
+                return node.children?.flattenedPDFs() ?? []
+            }
+        }
+    }
+
     private func sortedByKey(
         _ key: DirectorySortKey,
         direction: DirectorySortDirection
