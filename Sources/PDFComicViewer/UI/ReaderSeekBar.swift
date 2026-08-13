@@ -3,6 +3,11 @@ import SwiftUI
 @MainActor
 struct ReaderSeekBar: View {
     @ObservedObject var model: ReaderViewModel
+    /// マウスボタンを押してつまみをドラッグしている間だけtrueになる。
+    /// AppKitはドラッグ中に`.onContinuousHover`の更新配送を止めることがあり、
+    /// それに引きずられてシークバーが非表示になってしまう問題への対処として、
+    /// 親（`ReaderView`）へドラッグ中であることを直接伝える。
+    let onDraggingChanged: (Bool) -> Void
 
     /// ドラッグ中だけ値を保持する。nilならモデルの現在位置をそのまま映す。
     @State private var draggingValue: Double?
@@ -15,11 +20,16 @@ struct ReaderSeekBar: View {
                 in: 0...Double(max(unitCount - 1, 1)),
                 step: 1,
                 onEditingChanged: { isEditing in
+                    onDraggingChanged(isEditing)
                     if !isEditing {
                         commitImmediately()
                     }
                 }
             )
+            // 綴じ方向が変わるたびにSliderを作り直す。既存のSliderへ値だけ
+            // 差し替えるパスでは、AppKit側の描画更新が反映されないことがあるため、
+            // ビューごと作り直して確実に正しい向きで初期化させる。
+            .id(model.preferences.binding)
             .accessibilityLabel("ページ位置")
 
             Text(labelText)
@@ -38,6 +48,9 @@ struct ReaderSeekBar: View {
         .onDisappear {
             commitTask?.cancel()
             commitTask = nil
+            // ドラッグ中に破棄された場合（文書を閉じる操作など）でも、
+            // 親側の「ドラッグ中」フラグが立ちっぱなしにならないようにする。
+            onDraggingChanged(false)
         }
     }
 

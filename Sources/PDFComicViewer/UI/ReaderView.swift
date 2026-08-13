@@ -15,6 +15,25 @@ private struct PendingDeletion: Identifiable {
     let urls: [URL]
 }
 
+/// シークバーを実際に表示してよいかを判定する純粋ロジック。
+/// ドラッグ中はAppKitのイベント配送が乱れてホバー判定（`pointerIsNearBottom`）が
+/// 更新されなくなることがあるため、その揺らぎに関係なく「ドラッグ中である」という
+/// 独立した事実だけで表示を維持できるようにする。
+enum SeekBarVisibility {
+    static func isShown(
+        pointerIsNearBottom: Bool,
+        isDragging: Bool,
+        hasOpenDocument: Bool,
+        displayUnitCount: Int,
+        isLoading: Bool
+    ) -> Bool {
+        (pointerIsNearBottom || isDragging)
+            && hasOpenDocument
+            && displayUnitCount > 1
+            && !isLoading
+    }
+}
+
 @MainActor
 struct ReaderView: View {
     @ObservedObject var model: ReaderViewModel
@@ -33,6 +52,7 @@ struct ReaderView: View {
     @State private var sidebarWidthAtDragStart: CGFloat?
     @State private var readerAreaHeight: CGFloat = 0
     @State private var pointerIsNearBottom = false
+    @State private var seekBarIsDragging = false
     @State private var hideSeekBarTask: Task<Void, Never>?
     @State private var pendingDeletion: PendingDeletion?
 
@@ -248,10 +268,13 @@ struct ReaderView: View {
 
     /// シークバーを実際に出してよいか。飛ぶ先が無いときは出さない。
     private var seekBarIsShown: Bool {
-        pointerIsNearBottom
-            && model.session != nil
-            && model.displayUnits.count > 1
-            && !model.isLoading
+        SeekBarVisibility.isShown(
+            pointerIsNearBottom: pointerIsNearBottom,
+            isDragging: seekBarIsDragging,
+            hasOpenDocument: model.session != nil,
+            displayUnitCount: model.displayUnits.count,
+            isLoading: model.isLoading
+        )
     }
 
     /// 下端から80pt以内にポインタがあるかどうかで表示を切り替える。
@@ -340,7 +363,19 @@ struct ReaderView: View {
         }
         .overlay(alignment: .bottom) {
             if seekBarIsShown {
-                ReaderSeekBar(model: model)
+                ReaderSeekBar(
+                    model: model,
+                    onDraggingChanged: { isDragging in
+                        // ドラッグ開始時に保留中の非表示タイマーを止める。
+                        // ドラッグ中はseekBarIsShownが独立してtrueを保つため
+                        // 必須ではないが、無駄なタイマーを残さないための後始末。
+                        if isDragging {
+                            hideSeekBarTask?.cancel()
+                            hideSeekBarTask = nil
+                        }
+                        seekBarIsDragging = isDragging
+                    }
+                )
                     .padding(.horizontal, 16)
                     // warningBannerは下端固定で表示されるため、そのままだと
                     // つまみの上に重なって掴めなくなる。バナー表示中は
