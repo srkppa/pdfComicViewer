@@ -206,6 +206,10 @@ struct ReaderView: View {
         }
         .onChange(of: model.session?.url) { _, newURL in
             guard let newURL else { return }
+            // ツールバーの操作対象は選択中のPDF。自動で次の巻へ進んだときなど、
+            // こちらが操作せずに開いているPDFが変わっても対象がずれないよう、
+            // 選択を開いているPDFへ合わせる。
+            sidebarModel.selectOnly(newURL)
             let parent = newURL.deletingLastPathComponent().standardizedFileURL
             if let root = sidebarModel.rootURL,
                parent.path == root.path || parent.path.hasPrefix(root.path + "/") {

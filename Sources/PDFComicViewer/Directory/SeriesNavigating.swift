@@ -6,13 +6,23 @@ enum SeriesNavigation {
     /// `sortedURLs`の中から`current`の次のURLを返す。
     /// `current`が含まれていない、または既に最後なら`nil`。
     static func nextURL(after current: URL, in sortedURLs: [URL]) -> URL? {
+        neighbour(of: current, in: sortedURLs, offset: 1)
+    }
+
+    /// `sortedURLs`の中から`current`の手前のURLを返す。
+    /// `current`が含まれていない、または既に先頭なら`nil`。
+    static func previousURL(before current: URL, in sortedURLs: [URL]) -> URL? {
+        neighbour(of: current, in: sortedURLs, offset: -1)
+    }
+
+    private static func neighbour(of current: URL, in sortedURLs: [URL], offset: Int) -> URL? {
         let target = current.standardizedFileURL
         guard let index = sortedURLs.firstIndex(where: { $0.standardizedFileURL == target }) else {
             return nil
         }
-        let nextIndex = index + 1
-        guard sortedURLs.indices.contains(nextIndex) else { return nil }
-        return sortedURLs[nextIndex]
+        let neighbourIndex = index + offset
+        guard sortedURLs.indices.contains(neighbourIndex) else { return nil }
+        return sortedURLs[neighbourIndex]
     }
 }
 
@@ -20,16 +30,40 @@ protocol SeriesNavigating: Sendable {
     /// 開いているPDFと同じフォルダ直下から、ファイル名順で次のPDFを探す。
     /// サブフォルダはまたがない。見つからなければ`nil`。
     func nextVolumeURL(after url: URL) async -> URL?
+
+    /// 同じく、ファイル名順で手前のPDFを探す。
+    func previousVolumeURL(before url: URL) async -> URL?
+
+    /// 前後の巻を一度に返す。ボタンを押せるかどうかの判定用で、
+    /// 移動そのものには使わない。フォルダの読み込みを1回で済ませるために分けてある。
+    func adjacentVolumeURLs(of url: URL) async -> (previous: URL?, next: URL?)
 }
 
 struct SeriesNavigator: SeriesNavigating {
     func nextVolumeURL(after url: URL) async -> URL? {
         let target = url.standardizedFileURL
+        return SeriesNavigation.nextURL(after: target, in: await siblings(of: target))
+    }
+
+    func previousVolumeURL(before url: URL) async -> URL? {
+        let target = url.standardizedFileURL
+        return SeriesNavigation.previousURL(before: target, in: await siblings(of: target))
+    }
+
+    func adjacentVolumeURLs(of url: URL) async -> (previous: URL?, next: URL?) {
+        let target = url.standardizedFileURL
+        let siblings = await siblings(of: target)
+        return (
+            SeriesNavigation.previousURL(before: target, in: siblings),
+            SeriesNavigation.nextURL(after: target, in: siblings)
+        )
+    }
+
+    private func siblings(of target: URL) async -> [URL] {
         let parent = target.deletingLastPathComponent()
-        let siblings = await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) {
             Self.pdfSiblings(in: parent)
         }.value
-        return SeriesNavigation.nextURL(after: target, in: siblings)
     }
 
     private static func pdfSiblings(in folder: URL) -> [URL] {

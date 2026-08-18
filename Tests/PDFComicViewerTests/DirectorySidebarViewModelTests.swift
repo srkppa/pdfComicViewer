@@ -405,6 +405,18 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(scannedRoots.count, 1)
     }
 
+    /// 自動で次の巻へ進んだときなど、こちらが操作していないのに開いている
+    /// PDFが変わることがある。選択を追従させないと、ツールバーの操作対象が
+    /// 前の巻を指したままになる。
+    func testSelectOnlyReplacesTheWholeSelection() {
+        let model = makeModel(scanner: FakeDirectoryScanner(result: .success([])))
+        model.selectedNodeIDs = ["/tmp/a.pdf", "/tmp/b.pdf"]
+
+        model.selectOnly(URL(fileURLWithPath: "/tmp/comics/../c.pdf"))
+
+        XCTAssertEqual(model.selectedNodeIDs, ["/tmp/c.pdf"])
+    }
+
     private func makeModel(
         scanner: any DirectoryScanning,
         progressStore: any ReadingProgressStoring = FakeSidebarProgressStore(),

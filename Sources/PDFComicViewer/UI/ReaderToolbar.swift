@@ -125,6 +125,12 @@ struct ReaderToolbar: View {
 
             Divider().frame(height: 20)
 
+            volumeButtons
+
+            autoAdvanceToggleButton
+
+            Divider().frame(height: 20)
+
             iconButton("縮小", systemImage: "minus.magnifyingglass", shortcut: "⌘-", action: model.zoomOut)
                 .disabled(model.session == nil)
                 .focused($focusedControl, equals: .zoomOut)
@@ -200,6 +206,62 @@ struct ReaderToolbar: View {
         return ReaderPresentation.pageCounterText(for: unit, totalPages: session.pages.count)
     }
 
+    /// 隣の巻へ移るボタン。並び順とアイコンの向きは綴じ方向に合わせる。
+    /// 右綴じでは読み進む方向が左なので、「次の巻」も左側に置く。
+    @ViewBuilder
+    private var volumeButtons: some View {
+        let readsRightToLeft = model.preferences.binding == .right
+        if readsRightToLeft {
+            nextVolumeButton(systemImage: "chevron.left.2")
+            previousVolumeButton(systemImage: "chevron.right.2")
+        } else {
+            previousVolumeButton(systemImage: "chevron.left.2")
+            nextVolumeButton(systemImage: "chevron.right.2")
+        }
+    }
+
+    private func nextVolumeButton(systemImage: String) -> some View {
+        iconButton(
+            "次の巻を開く",
+            systemImage: systemImage,
+            action: model.openNextVolume
+        )
+        .disabled(!model.hasNextVolume)
+        .focused($focusedControl, equals: .nextVolume)
+    }
+
+    private func previousVolumeButton(systemImage: String) -> some View {
+        iconButton(
+            "手前の巻を開く（最終ページから）",
+            systemImage: systemImage,
+            action: model.openPreviousVolume
+        )
+        .disabled(!model.hasPreviousVolume)
+        .focused($focusedControl, equals: .previousVolume)
+    }
+
+    /// 端まで読んだときに隣の巻へ自動で移るかどうかの切り替え。
+    /// 上の2つのボタンからの移動は明示的な操作なので、この設定に関係なく効く。
+    private var autoAdvanceToggleButton: some View {
+        let isOn = model.seriesAutoAdvanceIsEnabled
+        let title = isOn
+            ? "端のページで隣の巻へ自動的に移る（オン）"
+            : "端のページで隣の巻へ自動的に移る（オフ）"
+        return Button {
+            model.seriesAutoAdvanceIsEnabled.toggle()
+        } label: {
+            Image(systemName: "books.vertical")
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isOn ? ReaderTheme.accent : ReaderTheme.primaryText)
+        .contentShape(Rectangle())
+        .accessibilityLabel(title)
+        .help(title)
+        .nativeToolTip(title)
+        .focused($focusedControl, equals: .autoAdvance)
+    }
+
     private func iconButton(
         _ title: String,
         systemImage: String,
@@ -229,6 +291,9 @@ private enum FocusedReaderControl: Hashable {
     case alignment
     case localShift
     case firstPage
+    case previousVolume
+    case nextVolume
+    case autoAdvance
     case zoomOut
     case fit
     case zoomIn

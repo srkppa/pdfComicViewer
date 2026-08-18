@@ -84,6 +84,15 @@ final class DirectorySidebarViewModel: ObservableObject {
         }
     }
 
+    /// 選択を指定のPDF1件だけに置き換える。
+    ///
+    /// ツールバーの操作は選択中のPDFを対象にするため、こちらが操作せずに
+    /// 開いているPDFが変わったとき（最終ページからの自動遷移など）に
+    /// 選択を追従させないと、操作が前のPDFに向かってしまう。
+    func selectOnly(_ url: URL) {
+        selectedNodeIDs = [url.standardizedFileURL.path]
+    }
+
     /// 選択中のIDのうち、PDFのURLだけを返す。
     /// フォルダごとの削除は誤操作の影響が大きいため対象外にしている。
     func pdfURLs(for ids: Set<String>) -> [URL] {

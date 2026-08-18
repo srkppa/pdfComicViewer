@@ -32,12 +32,27 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var pagePreviewSnapshot = PagePreviewSnapshot.empty
     /// 起動直後からフォルダペインを見せておくため、既定で表示状態にする。
     @Published var sidebarIsVisible = true
+    /// 同じフォルダに次の巻・手前の巻があるかどうか。ツールバーのボタンを
+    /// 押せるかどうかの判定に使う。探索はディレクトリI/Oなので、開いた直後に
+    /// 一度だけ非同期で調べて覚えておく。
+    @Published private(set) var hasNextVolume = false
+    @Published private(set) var hasPreviousVolume = false
+    /// 最終ページで次の巻へ、1ページ目で手前の巻へ自動で移るかどうか。
+    /// PDFごとではなくアプリ全体の設定なので、`UserDefaults`に覚えさせる。
+    @Published var seriesAutoAdvanceIsEnabled: Bool {
+        didSet {
+            userDefaults.set(seriesAutoAdvanceIsEnabled, forKey: Self.autoAdvanceDefaultsKey)
+        }
+    }
+
 
     private let loader: any PDFDocumentLoading
     private let progressStore: any ReadingProgressStoring
     private let seriesNavigator: any SeriesNavigating
+    private let userDefaults: UserDefaults
     private let pagePreviewCache = PagePreviewCache()
     private var nextVolumeTask: Task<Void, Never>?
+    private var adjacentVolumeLookupTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
     private var pagePreviewTask: Task<Void, Never>?
     private var dirtyRecords: [String: (generation: Int, record: DocumentRecord)] = [:]
@@ -51,12 +66,20 @@ final class ReaderViewModel: ObservableObject {
     init(
         loader: any PDFDocumentLoading,
         progressStore: any ReadingProgressStoring,
-        seriesNavigator: any SeriesNavigating = SeriesNavigator()
+        seriesNavigator: any SeriesNavigating = SeriesNavigator(),
+        userDefaults: UserDefaults = .standard
     ) {
         self.loader = loader
         self.progressStore = progressStore
         self.seriesNavigator = seriesNavigator
+        self.userDefaults = userDefaults
+        // 未設定なら有効。`bool(forKey:)`は未設定でもfalseを返すため、
+        // 既定値と「明示的にオフにした」を取り違えないよう存在確認を挟む。
+        seriesAutoAdvanceIsEnabled =
+            userDefaults.object(forKey: Self.autoAdvanceDefaultsKey) as? Bool ?? true
     }
+
+    private static let autoAdvanceDefaultsKey = "seriesAutoAdvanceIsEnabled"
 
     static func progressFileURL(applicationSupportDirectory: URL) -> URL {
         applicationSupportDirectory
@@ -186,6 +209,67 @@ final class ReaderViewModel: ObservableObject {
     ///   変わっていれば「最後のページ」ではなくなっているため、実際に最後の
     ///   単位にいるかどうかを直接確認する。
     private func advanceToNextVolumeIfPossible() {
+        guard seriesAutoAdvanceIsEnabled else { return }
+        openAdjacentVolume(
+            atEdge: { $0.currentUnitIndex == $0.displayUnits.count - 1 },
+            find: { [seriesNavigator] url in await seriesNavigator.nextVolumeURL(after: url) },
+            startAtLastPage: false
+        )
+    }
+
+    /// 開いているPDFの前後に巻があるかを調べ直す。
+    /// 探索中に別の文書へ移った場合は、その結果を捨てる。
+    private func refreshAdjacentVolumeAvailability(for url: URL) {
+        adjacentVolumeLookupTask?.cancel()
+        hasNextVolume = false
+        hasPreviousVolume = false
+        let generation = loadGeneration
+        adjacentVolumeLookupTask = Task { [weak self, seriesNavigator] in
+            let adjacent = await seriesNavigator.adjacentVolumeURLs(of: url)
+            guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
+            self.hasNextVolume = adjacent.next != nil
+            self.hasPreviousVolume = adjacent.previous != nil
+        }
+    }
+
+    /// ツールバーから次の巻を開く。ページ位置に関係なく移れる明示的な操作なので、
+    /// 端にいるかどうかも自動遷移の設定も見ない。
+    func openNextVolume() {
+        openAdjacentVolume(
+            atEdge: { _ in true },
+            find: { [seriesNavigator] url in await seriesNavigator.nextVolumeURL(after: url) },
+            startAtLastPage: false
+        )
+    }
+
+    /// ツールバーから手前の巻を開く。引き返す操作なので末尾のページから見せる。
+    func openPreviousVolume() {
+        openAdjacentVolume(
+            atEdge: { _ in true },
+            find: { [seriesNavigator] url in await seriesNavigator.previousVolumeURL(before: url) },
+            startAtLastPage: true
+        )
+    }
+
+    /// 1ページ目で「前へ」を押したときに、同じフォルダの手前のPDFへ戻る。
+    /// 誤って次の巻へ進んでしまっても、同じ操作で引き返せるようにするため、
+    /// 戻った先では末尾のページを開く。
+    private func retreatToPreviousVolumeIfPossible() {
+        guard seriesAutoAdvanceIsEnabled else { return }
+        openAdjacentVolume(
+            atEdge: { $0.currentUnitIndex == 0 },
+            find: { [seriesNavigator] url in await seriesNavigator.previousVolumeURL(before: url) },
+            startAtLastPage: true
+        )
+    }
+
+    /// 隣の巻を探して開く。次へ・前へで共通の手順。
+    /// `atEdge` は探索が終わった時点でもまだ端にいるかの再確認に使う。
+    private func openAdjacentVolume(
+        atEdge: @escaping @MainActor (ReaderViewModel) -> Bool,
+        find: @escaping @Sendable (URL) async -> URL?,
+        startAtLastPage: Bool
+    ) {
         guard nextVolumeTask == nil, let session else { return }
         let startingURL = session.url
         let startingGeneration = loadGeneration
@@ -193,20 +277,27 @@ final class ReaderViewModel: ObservableObject {
         nextVolumeTask = Task { [weak self] in
             defer { self?.nextVolumeTask = nil }
             guard let self,
-                  let nextURL = await self.seriesNavigator.nextVolumeURL(after: startingURL),
+                  let targetURL = await find(startingURL),
                   self.loadGeneration == startingGeneration,
                   self.currentUnitIndex == startingUnitIndex,
-                  self.currentUnitIndex == self.displayUnits.count - 1 else {
+                  atEdge(self) else {
                 return
             }
-            await self.open(url: nextURL)
+            await self.open(url: targetURL)
+            // 開き直したことで世代が変わるため、ここでの再確認は
+            // 「自分が開いたものがまだ開いているか」だけで足りる。
+            guard startAtLastPage, self.session?.url == targetURL else { return }
+            self.jumpToUnit(index: self.displayUnits.count - 1)
         }
     }
 
     func previous() {
         guard !displayUnits.isEmpty else { return }
         let previousIndex = max(currentUnitIndex - 1, 0)
-        guard previousIndex != currentUnitIndex else { return }
+        guard previousIndex != currentUnitIndex else {
+            retreatToPreviousVolumeIfPossible()
+            return
+        }
         currentUnitIndex = previousIndex
         updateCurrentPageFromUnit()
         schedulePagePreviews()
@@ -325,6 +416,10 @@ final class ReaderViewModel: ObservableObject {
         pagePreviewTask?.cancel()
         pagePreviewDocumentID = UUID()
         pagePreviewSnapshot = .empty
+        adjacentVolumeLookupTask?.cancel()
+        adjacentVolumeLookupTask = nil
+        hasNextVolume = false
+        hasPreviousVolume = false
         rebuildKeepingCurrentPage()
     }
 
@@ -351,6 +446,7 @@ final class ReaderViewModel: ObservableObject {
         pagePreviewDocumentID = UUID()
         pagePreviewSnapshot = .empty
         focusRequestSequence += 1
+        refreshAdjacentVolumeAvailability(for: newSession.url)
         let page = clampedPage(newPreferences.lastPageIndex, in: newSession.pages)
         session = newSession
         passwordRequest = nil

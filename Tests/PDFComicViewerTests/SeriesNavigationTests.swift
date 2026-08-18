@@ -59,4 +59,42 @@ final class SeriesNavigationTests: XCTestCase {
 
         XCTAssertEqual(next, urls[1])
     }
+
+    func testPreviousURLReturnsPrecedingElement() {
+        let urls = [
+            URL(fileURLWithPath: "/tmp/1.pdf"),
+            URL(fileURLWithPath: "/tmp/2.pdf"),
+            URL(fileURLWithPath: "/tmp/3.pdf")
+        ]
+
+        let previous = SeriesNavigation.previousURL(before: urls[2], in: urls)
+
+        XCTAssertEqual(previous, urls[1])
+    }
+
+    func testPreviousURLReturnsNilAtFirstElement() {
+        let urls = [
+            URL(fileURLWithPath: "/tmp/1.pdf"),
+            URL(fileURLWithPath: "/tmp/2.pdf")
+        ]
+
+        XCTAssertNil(SeriesNavigation.previousURL(before: urls[0], in: urls))
+    }
+
+    func testPreviousURLReturnsNilWhenCurrentIsNotInList() {
+        let urls = [URL(fileURLWithPath: "/tmp/1.pdf")]
+
+        XCTAssertNil(
+            SeriesNavigation.previousURL(
+                before: URL(fileURLWithPath: "/tmp/missing.pdf"),
+                in: urls
+            )
+        )
+    }
+
+    func testPreviousURLReturnsNilForEmptyList() {
+        XCTAssertNil(
+            SeriesNavigation.previousURL(before: URL(fileURLWithPath: "/tmp/1.pdf"), in: [])
+        )
+    }
 }

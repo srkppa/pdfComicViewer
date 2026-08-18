@@ -309,6 +309,208 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertNotNil(model.errorMessage)
     }
 
+    /// 1ページ目で「前へ」を押したら、手前の巻の最終ページへ戻る。
+    /// 最終ページで進んだ先から、同じ操作で引き返せるようにするため。
+    func testPreviousAtFirstUnitOpensPreviousVolumeAtItsLastPage() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let previousURL = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let navigator = FakeSeriesNavigator(previousURLsByCurrentURL: [url: previousURL])
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 2, url: url)))
+        loader.resultsByURL[previousURL] = .ready(.fixture(pageCount: 5, url: previousURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+
+        model.previous()
+        try await waitUntil { model.session?.url == previousURL }
+
+        XCTAssertEqual(model.session?.url, previousURL)
+        // 保存位置がどこであれ、引き返した先では末尾を見せる。
+        XCTAssertEqual(model.currentUnitIndex, model.displayUnits.count - 1)
+    }
+
+    /// 手前の巻が無ければ、1ページ目に留まる。
+    func testPreviousAtFirstUnitStaysWhenThereIsNoPreviousVolume() async throws {
+        let (model, _) = await makeOpenedModel(
+            pageCount: 4,
+            seriesNavigator: FakeSeriesNavigator()
+        )
+
+        model.previous()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(model.currentUnitIndex, 0)
+        XCTAssertEqual(model.session?.url, URL(fileURLWithPath: "/tmp/comic.pdf"))
+    }
+
+    /// 自動遷移を切っていれば、次へも前へも巻をまたがない。
+    func testVolumeNavigationIsSkippedWhenAutoAdvanceIsDisabled() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(
+            nextURLsByCurrentURL: [url: URL(fileURLWithPath: "/tmp/comic-3.pdf")],
+            previousURLsByCurrentURL: [url: URL(fileURLWithPath: "/tmp/comic-1.pdf")]
+        )
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 1, url: url)))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator,
+            // 既定の UserDefaults に書くと、後続のテストへ設定が漏れる。
+            userDefaults: Self.makeIsolatedDefaults()
+        )
+        await model.open(url: url)
+        model.seriesAutoAdvanceIsEnabled = false
+
+        model.next()
+        model.previous()
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertEqual(model.session?.url, url)
+        let requested = await navigator.requestedURLs
+        XCTAssertTrue(requested.isEmpty)
+    }
+
+    /// 自動遷移の入切は、PDFごとではなくアプリ全体の設定として覚える。
+    func testAutoAdvanceSettingIsPersistedAcrossInstances() {
+        let defaults = Self.makeIsolatedDefaults()
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 1))),
+            progressStore: FakeProgressStore(),
+            userDefaults: defaults
+        )
+        XCTAssertTrue(model.seriesAutoAdvanceIsEnabled)
+
+        model.seriesAutoAdvanceIsEnabled = false
+
+        let reopened = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 1))),
+            progressStore: FakeProgressStore(),
+            userDefaults: defaults
+        )
+        XCTAssertFalse(reopened.seriesAutoAdvanceIsEnabled)
+    }
+
+    /// 隣の巻があるかどうかを開いた時点で調べておく。ツールバーのボタンを
+    /// 押せるかどうかの判定に使うため。
+    func testAdjacentVolumeAvailabilityIsResolvedAfterOpening() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(
+            nextURLsByCurrentURL: [url: URL(fileURLWithPath: "/tmp/comic-3.pdf")],
+            previousURLsByCurrentURL: [url: URL(fileURLWithPath: "/tmp/comic-1.pdf")]
+        )
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 2, url: url))),
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+
+        await model.open(url: url)
+        try await waitUntil { model.hasNextVolume && model.hasPreviousVolume }
+
+        XCTAssertTrue(model.hasNextVolume)
+        XCTAssertTrue(model.hasPreviousVolume)
+    }
+
+    /// 隣に何も無ければ、両方とも押せない状態のままになる。
+    func testAdjacentVolumeAvailabilityStaysFalseWithoutSiblings() async throws {
+        let (model, _) = await makeOpenedModel(
+            pageCount: 2,
+            seriesNavigator: FakeSeriesNavigator()
+        )
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertFalse(model.hasNextVolume)
+        XCTAssertFalse(model.hasPreviousVolume)
+    }
+
+    /// 文書を閉じたら、前に開いていた巻の情報を残さない。
+    func testClosingDocumentClearsAdjacentVolumeAvailability() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(
+            previousURLsByCurrentURL: [url: URL(fileURLWithPath: "/tmp/comic-1.pdf")]
+        )
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 2, url: url))),
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+        try await waitUntil { model.hasPreviousVolume }
+
+        await model.closeDocument()
+
+        XCTAssertFalse(model.hasPreviousVolume)
+        XCTAssertFalse(model.hasNextVolume)
+    }
+
+    /// ツールバーのボタンは、ページ位置に関係なく隣の巻へ移れる。
+    func testOpenNextVolumeWorksFromTheMiddleOfTheDocument() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let nextURL = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(nextURLsByCurrentURL: [url: nextURL])
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 6, url: url)))
+        loader.resultsByURL[nextURL] = .ready(.fixture(pageCount: 4, url: nextURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+        model.next()
+        XCTAssertNotEqual(model.currentUnitIndex, model.displayUnits.count - 1)
+
+        model.openNextVolume()
+        try await waitUntil { model.session?.url == nextURL }
+
+        XCTAssertEqual(model.session?.url, nextURL)
+    }
+
+    /// 手前の巻へもページ位置に関係なく移れる。こちらは末尾から見せる。
+    func testOpenPreviousVolumeWorksFromTheMiddleAndStartsAtTheLastPage() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let previousURL = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let navigator = FakeSeriesNavigator(previousURLsByCurrentURL: [url: previousURL])
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 6, url: url)))
+        loader.resultsByURL[previousURL] = .ready(.fixture(pageCount: 5, url: previousURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator
+        )
+        await model.open(url: url)
+        model.next()
+
+        model.openPreviousVolume()
+        try await waitUntil { model.session?.url == previousURL }
+
+        XCTAssertEqual(model.currentUnitIndex, model.displayUnits.count - 1)
+    }
+
+    /// ボタンからの移動は明示的な操作なので、自動遷移をオフにしていても効く。
+    func testExplicitVolumeButtonsWorkEvenWhenAutoAdvanceIsDisabled() async throws {
+        let url = URL(fileURLWithPath: "/tmp/comic-1.pdf")
+        let nextURL = URL(fileURLWithPath: "/tmp/comic-2.pdf")
+        let navigator = FakeSeriesNavigator(nextURLsByCurrentURL: [url: nextURL])
+        let loader = FakePDFLoader(result: .ready(.fixture(pageCount: 2, url: url)))
+        loader.resultsByURL[nextURL] = .ready(.fixture(pageCount: 2, url: nextURL))
+        let model = ReaderViewModel(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            seriesNavigator: navigator,
+            userDefaults: Self.makeIsolatedDefaults()
+        )
+        await model.open(url: url)
+        model.seriesAutoAdvanceIsEnabled = false
+
+        model.openNextVolume()
+        try await waitUntil { model.session?.url == nextURL }
+
+        XCTAssertEqual(model.session?.url, nextURL)
+    }
+
     func testPreviousAtFirstUnitStaysAtFirstPage() async {
         let (model, _) = await makeOpenedModel(pageCount: 4)
 
@@ -987,6 +1189,12 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(saved.metadata, replacement.metadata)
     }
 
+    /// テストごとに独立した設定領域。既定の`UserDefaults`を使うと、
+    /// あるテストで書いた設定が同じプロセスの他のテストへ持ち越される。
+    private static func makeIsolatedDefaults() -> UserDefaults {
+        UserDefaults(suiteName: "ReaderViewModelTests-\(UUID().uuidString)")!
+    }
+
     private func makeOpenedModel(
         pageCount: Int,
         url: URL = URL(fileURLWithPath: "/tmp/comic.pdf"),
@@ -1170,11 +1378,17 @@ final class ReaderViewModelTests: XCTestCase {
 
 private actor FakeSeriesNavigator: SeriesNavigating {
     private var nextURLsByCurrentURL: [URL: URL] = [:]
+    private var previousURLsByCurrentURL: [URL: URL] = [:]
     private var delay: Duration
     private(set) var requestedURLs: [URL] = []
 
-    init(nextURLsByCurrentURL: [URL: URL] = [:], delay: Duration = .zero) {
+    init(
+        nextURLsByCurrentURL: [URL: URL] = [:],
+        previousURLsByCurrentURL: [URL: URL] = [:],
+        delay: Duration = .zero
+    ) {
         self.nextURLsByCurrentURL = nextURLsByCurrentURL
+        self.previousURLsByCurrentURL = previousURLsByCurrentURL
         self.delay = delay
     }
 
@@ -1184,6 +1398,21 @@ private actor FakeSeriesNavigator: SeriesNavigating {
             try? await Task.sleep(for: delay)
         }
         return nextURLsByCurrentURL[url.standardizedFileURL]
+    }
+
+    func previousVolumeURL(before url: URL) async -> URL? {
+        requestedURLs.append(url)
+        if delay > .zero {
+            try? await Task.sleep(for: delay)
+        }
+        return previousURLsByCurrentURL[url.standardizedFileURL]
+    }
+
+    /// ボタンの有効・無効を決めるだけの問い合わせ。移動の要求とは別物なので
+    /// `requestedURLs` には記録しない。
+    func adjacentVolumeURLs(of url: URL) async -> (previous: URL?, next: URL?) {
+        let normalized = url.standardizedFileURL
+        return (previousURLsByCurrentURL[normalized], nextURLsByCurrentURL[normalized])
     }
 }
 

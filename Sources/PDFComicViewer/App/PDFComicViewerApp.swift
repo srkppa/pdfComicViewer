@@ -136,6 +136,10 @@ struct ReaderCommands: Commands {
 
             Divider()
 
+            Toggle("最終ページで次の巻へ自動的に進む", isOn: $model.seriesAutoAdvanceIsEnabled)
+
+            Divider()
+
             Button("全画面表示を切り替える") {
                 model.requestFullScreenToggle()
             }
