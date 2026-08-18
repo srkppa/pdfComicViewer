@@ -108,6 +108,34 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.currentUnit, .pair(3, 4))
     }
 
+    /// 文書を開き終えたら、本文へフォーカスを戻す要求番号を進める。
+    /// これが進まないと、サイドバーから開いた直後はフォーカスが一覧に
+    /// 残ったままになり、ショートカットでページ送りできない。
+    func testActivatingDocumentAdvancesFocusRequestSequence() async {
+        let session = DocumentSession.fixture(pageCount: 4)
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        let before = model.focusRequestSequence
+
+        await model.open(url: session.url)
+
+        XCTAssertEqual(model.focusRequestSequence, before + 1)
+    }
+
+    /// パスワード待ちで止まったときは本文がまだ無いので、フォーカスは動かさない。
+    /// 動かすとパスワード入力欄から入力できなくなる。
+    func testPasswordRequiredOpenDoesNotAdvanceFocusRequestSequence() async {
+        let session = DocumentSession.fixture(pageCount: 4)
+        let locked = LockedPDFDocument.fixture(url: session.url, metadata: session.metadata)
+        let loader = FakePDFLoader(result: .passwordRequired(locked))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        let before = model.focusRequestSequence
+
+        await model.open(url: locked.url)
+
+        XCTAssertEqual(model.focusRequestSequence, before)
+    }
+
     func testChangingModeKeepsCurrentPhysicalPage() async {
         let session = DocumentSession.fixture(pageCount: 6)
         let loader = FakePDFLoader(result: .ready(session))

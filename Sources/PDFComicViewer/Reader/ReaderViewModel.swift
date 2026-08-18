@@ -25,6 +25,10 @@ final class ReaderViewModel: ObservableObject {
     @Published private(set) var fileOpenRequestSequence = 0
     @Published private(set) var zoomCommand = ZoomCommand(action: .fit, sequence: 0)
     @Published private(set) var fullScreenRequestSequence = 0
+    /// 本文へキーボードフォーカスを戻す要求。文書を開き終えるたびに進む。
+    /// サイドバーやツールバーから開くとそちらにフォーカスが残ったままになり、
+    /// 一度本文をクリックするまでページ送りのショートカットが効かないため。
+    @Published private(set) var focusRequestSequence = 0
     @Published private(set) var pagePreviewSnapshot = PagePreviewSnapshot.empty
     /// 起動直後からフォルダペインを見せておくため、既定で表示状態にする。
     @Published var sidebarIsVisible = true
@@ -306,6 +310,7 @@ final class ReaderViewModel: ObservableObject {
     ) {
         pagePreviewDocumentID = UUID()
         pagePreviewSnapshot = .empty
+        focusRequestSequence += 1
         let page = clampedPage(newPreferences.lastPageIndex, in: newSession.pages)
         session = newSession
         passwordRequest = nil

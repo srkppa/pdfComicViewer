@@ -336,6 +336,7 @@ struct ReaderView: View {
                     seekBarIsShown ? 64 : 0
                 ),
                 fullScreenRequestSequence: model.fullScreenRequestSequence,
+                focusRequestSequence: model.focusRequestSequence,
                 action: handleInput,
                 interaction: revealControls,
                 contextPageRequest: selectContextPage,

@@ -13,6 +13,7 @@ final class ReaderInputMappingTests: XCTestCase {
             excludedTopHeight: 0,
             excludedBottomHeight: 0,
             fullScreenRequestSequence: 0,
+            focusRequestSequence: 0,
             action: { actions.append($0) },
             interaction: {},
             contextPageRequest: { _, _ in },
@@ -48,6 +49,85 @@ final class ReaderInputMappingTests: XCTestCase {
         hostView.keyDown(with: event)
 
         XCTAssertEqual(actions, [.next])
+    }
+
+    /// PDFを開いた直後は、サイドバーなど別のビューにフォーカスが残っていても
+    /// 本文へ戻す。戻さないと、一度本文をクリックするまでページ送りの
+    /// ショートカットが効かない。
+    @MainActor
+    func testFocusRequestMovesFirstResponderToViewer() {
+        let hostView = MonitorHostView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        let window = NSWindow(
+            contentRect: hostView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let sidebarField = NSTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 20))
+        let container = NSView(frame: hostView.frame)
+        container.addSubview(hostView)
+        container.addSubview(sidebarField)
+        window.contentView = container
+        window.makeKeyAndOrderFront(nil)
+
+        let coordinator = makeMonitor(focusRequestSequence: 0).makeCoordinator()
+        hostView.coordinator = coordinator
+        coordinator.attach(to: hostView)
+        XCTAssertTrue(window.makeFirstResponder(sidebarField))
+
+        coordinator.update(from: makeMonitor(focusRequestSequence: 1))
+
+        XCTAssertTrue(
+            window.firstResponder === hostView
+                || window.firstResponder?.isKind(of: NSView.self) == true
+                && (window.firstResponder as? NSView)?.isDescendant(of: hostView) == true,
+            "本文へフォーカスが移っていない: \(String(describing: window.firstResponder))"
+        )
+    }
+
+    /// 同じ要求番号のまま再描画されただけなら、フォーカスは奪わない。
+    /// 奪うと、ツールバーやサイドバーを操作している最中に持っていかれてしまう。
+    @MainActor
+    func testUnchangedFocusRequestLeavesFirstResponderAlone() {
+        let hostView = MonitorHostView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        let window = NSWindow(
+            contentRect: hostView.frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let sidebarField = NSTextField(frame: NSRect(x: 0, y: 0, width: 100, height: 20))
+        let container = NSView(frame: hostView.frame)
+        container.addSubview(hostView)
+        container.addSubview(sidebarField)
+        window.contentView = container
+        window.makeKeyAndOrderFront(nil)
+
+        let coordinator = makeMonitor(focusRequestSequence: 3).makeCoordinator()
+        hostView.coordinator = coordinator
+        coordinator.attach(to: hostView)
+        XCTAssertTrue(window.makeFirstResponder(sidebarField))
+
+        coordinator.update(from: makeMonitor(focusRequestSequence: 3))
+
+        XCTAssertFalse(window.firstResponder === hostView)
+    }
+
+    @MainActor
+    private func makeMonitor(focusRequestSequence: Int) -> ReaderInputMonitor {
+        ReaderInputMonitor(
+            binding: .right,
+            isEnabled: true,
+            controlHasKeyboardFocus: false,
+            excludedTopHeight: 0,
+            excludedBottomHeight: 0,
+            fullScreenRequestSequence: 0,
+            focusRequestSequence: focusRequestSequence,
+            action: { _ in },
+            interaction: {},
+            contextPageRequest: { _, _ in },
+            fullScreenChange: { _ in }
+        )
     }
 
     func testDragPanKeepsClickJitterStationaryAndPansAfterThreshold() {

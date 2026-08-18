@@ -109,6 +109,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
     let excludedTopHeight: CGFloat
     let excludedBottomHeight: CGFloat
     let fullScreenRequestSequence: Int
+    let focusRequestSequence: Int
     let action: (ReaderInputAction) -> Void
     let interaction: () -> Void
     let contextPageRequest: (CGFloat, CGFloat) -> Void
@@ -150,6 +151,8 @@ struct ReaderInputMonitor: NSViewRepresentable {
         private var excludedBottomHeight: CGFloat
         private var lastFullScreenRequestSequence: Int
         private var hasPendingFullScreenRequest = false
+        private var lastFocusRequestSequence: Int
+        private var hasPendingFocusRequest = false
         private var action: (ReaderInputAction) -> Void
         private var interaction: () -> Void
         private var contextPageRequest: (CGFloat, CGFloat) -> Void
@@ -162,6 +165,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
             excludedTopHeight = monitor.excludedTopHeight
             excludedBottomHeight = monitor.excludedBottomHeight
             lastFullScreenRequestSequence = monitor.fullScreenRequestSequence
+            lastFocusRequestSequence = monitor.focusRequestSequence
             action = monitor.action
             interaction = monitor.interaction
             contextPageRequest = monitor.contextPageRequest
@@ -187,7 +191,12 @@ struct ReaderInputMonitor: NSViewRepresentable {
                 lastFullScreenRequestSequence = monitor.fullScreenRequestSequence
                 hasPendingFullScreenRequest = true
             }
+            if lastFocusRequestSequence != monitor.focusRequestSequence {
+                lastFocusRequestSequence = monitor.focusRequestSequence
+                hasPendingFocusRequest = true
+            }
             performPendingFullScreenRequest()
+            performPendingFocusRequest()
             updateMonitoringState()
         }
 
@@ -195,6 +204,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
             hostView = view
             guard window !== view.window else {
                 performPendingFullScreenRequest()
+                performPendingFocusRequest()
                 updateMonitoringState()
                 return
             }
@@ -233,6 +243,7 @@ struct ReaderInputMonitor: NSViewRepresentable {
                 self?.fullScreenChange(isFullScreen)
             }
             performPendingFullScreenRequest()
+            performPendingFocusRequest()
             updateMonitoringState()
             if window.firstResponder === window || window.firstResponder == nil {
                 window.makeFirstResponder(view)
@@ -295,6 +306,17 @@ struct ReaderInputMonitor: NSViewRepresentable {
             window?.acceptsMouseMovedEvents = previousAcceptsMouseMovedEvents
             mouseDownLocation = nil
             maximumDragDistance = 0
+        }
+
+        /// 文書を開き終えた直後に、本文へキーボードフォーカスを引き戻す。
+        /// ウインドウがまだ決まっていないうちは奪いようが無いので保留し、
+        /// `attach(to:)` で消化する。キーウインドウかどうかは問わない
+        /// （`makeFirstResponder` は非アクティブなウインドウでも成立し、
+        /// キーに戻った時点でそのレスポンダが入力を受け取る）。
+        private func performPendingFocusRequest() {
+            guard hasPendingFocusRequest, let window, let hostView else { return }
+            hasPendingFocusRequest = false
+            window.makeFirstResponder(hostView)
         }
 
         private func performPendingFullScreenRequest() {
