@@ -118,4 +118,52 @@ final class SpreadBuilderTests: XCTestCase {
 
         XCTAssertEqual(result, [.single(0), .single(1), .pair(2, 3)])
     }
+
+    /// 表紙が横長のPDFでも、見開き位置のずらしが効かなければならない。
+    /// `alignment` の起点を「1ページ目」に固定していると、横長判定が先に
+    /// 成立して分岐に届かず、切り替えても結果が変わらなくなる。
+    func testCoverAlignmentAnchorsToFirstPairablePageAfterLandscapeCover() {
+        let pages = [landscape, portrait, portrait, portrait, portrait]
+
+        let cover = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .coverSingle, overrides: [:]
+        )
+        let shifted = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .shifted, overrides: [:]
+        )
+
+        XCTAssertEqual(cover, [.single(0), .single(1), .pair(2, 3), .single(4)])
+        XCTAssertEqual(shifted, [.single(0), .pair(1, 2), .pair(3, 4)])
+    }
+
+    /// 1ページ目を手動で「単独」にしている場合も、その次の見開き可能ページが
+    /// ずらしの起点になる。
+    func testCoverAlignmentAnchorsToFirstPairablePageAfterManualSingleCover() {
+        let pages = [portrait, portrait, portrait, portrait]
+
+        let cover = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .coverSingle, overrides: [0: .single]
+        )
+        let shifted = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .shifted, overrides: [0: .single]
+        )
+
+        XCTAssertEqual(cover, [.single(0), .single(1), .pair(2, 3)])
+        XCTAssertEqual(shifted, [.single(0), .pair(1, 2), .single(3)])
+    }
+
+    /// 全ページが横長でずらす余地が無くても、落ちずに全部単独で返る。
+    func testAllLandscapePagesStaySingleUnderBothAlignments() {
+        let pages = [landscape, landscape, landscape]
+
+        let cover = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .coverSingle, overrides: [:]
+        )
+        let shifted = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .shifted, overrides: [:]
+        )
+
+        XCTAssertEqual(cover, [.single(0), .single(1), .single(2)])
+        XCTAssertEqual(shifted, [.single(0), .single(1), .single(2)])
+    }
 }
