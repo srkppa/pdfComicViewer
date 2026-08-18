@@ -101,8 +101,19 @@ struct ReaderToolbar: View {
                 shortcut: "S",
                 action: model.toggleAlignment
             )
-            .disabled(model.session == nil || model.preferences.displayMode == .single)
+            // 起点ページに組む相手がいないときは、押しても組み合わせが変わらない。
+            // 押せてしまうと壊れたように見えるので、無効にして理由を示す。
+            .disabled(!model.alignmentToggleIsEffective)
             .focused($focusedControl, equals: .alignment)
+
+            iconButton(
+                "いま見ているページから先をずらす",
+                systemImage: "rectangle.split.2x1.slash",
+                shortcut: "⇧S",
+                action: model.shiftSpreadHere
+            )
+            .disabled(model.session == nil || model.preferences.displayMode == .single)
+            .focused($focusedControl, equals: .localShift)
 
             iconButton(
                 "最初に戻る",
@@ -216,6 +227,7 @@ private enum FocusedReaderControl: Hashable {
     case binding
     case displayMode
     case alignment
+    case localShift
     case firstPage
     case zoomOut
     case fit

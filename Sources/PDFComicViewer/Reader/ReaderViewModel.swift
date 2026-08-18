@@ -246,6 +246,44 @@ final class ReaderViewModel: ObservableObject {
         scheduleSave()
     }
 
+    /// 見開き位置のずらし（`toggleAlignment()`）が実際に効くかどうか。
+    /// 効かない状態でボタンを押せてしまうと、壊れたように見えるため、
+    /// UI側はこれで無効化する。
+    var alignmentToggleIsEffective: Bool {
+        guard let session, preferences.displayMode == .spread else { return false }
+        return SpreadBuilder.alignmentToggleChangesLayout(
+            pages: session.pages,
+            overrides: preferences.pageOverrides
+        )
+    }
+
+    /// いま見ている見開きの組み合わせを1ページ分ずらす。もう一度呼べば元に戻る。
+    ///
+    /// `toggleAlignment()` は文書の先頭から数えたずれを切り替えるものなので、
+    /// 横長ページや「単独」指定ページで組み合わせが途切れると、その先へは
+    /// 効かない。そこを読んでいる最中でもずらせるようにするための操作。
+    ///
+    /// ずらすのは、見ているページ自身ではなく、そのページが属する「見開きが
+    /// 連続している区間」の先頭。自分を単独にすると、そのページが孤立する
+    /// だけで、見えている組み合わせは変わらない。
+    func shiftSpreadHere() {
+        guard preferences.displayMode == .spread,
+              let anchor = SpreadBuilder.pairRunStartPage(
+                  units: displayUnits,
+                  unitIndex: currentUnitIndex
+              ) else { return }
+
+        if preferences.pageOverrides[anchor] == .single {
+            // 自分が入れた空きの上にいる。外して元へ戻す。
+            setPageOverride(.automatic, for: anchor)
+        } else if anchor > 0, preferences.pageOverrides[anchor - 1] == .single {
+            // ひとつ手前に入れた空きでずれている状態。そこを外して元へ戻す。
+            setPageOverride(.automatic, for: anchor - 1)
+        } else {
+            setPageOverride(.single, for: anchor)
+        }
+    }
+
     func setBinding(_ binding: BindingDirection) {
         guard preferences.binding != binding else { return }
         preferences.binding = binding
@@ -255,7 +293,9 @@ final class ReaderViewModel: ObservableObject {
 
     func setPageOverride(_ override: PageLayoutOverride, for pageIndex: Int) {
         guard let session, session.pages.indices.contains(pageIndex) else { return }
-        preferences.pageOverrides[pageIndex] = override
+        // 「自動」は指定なしと同義なので、辞書に残さず消す。残すと、指定と解除を
+        // 繰り返すたびに保存データへ意味の無いエントリが積み上がる。
+        preferences.pageOverrides[pageIndex] = override == .automatic ? nil : override
         rebuildKeepingCurrentPage()
         scheduleSave()
     }

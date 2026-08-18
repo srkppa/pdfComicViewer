@@ -16,6 +16,7 @@ enum ReaderInputAction: Equatable {
     case singlePage
     case spread
     case toggleAlignment
+    case shiftSpreadHere
 }
 
 enum ReaderInputMapping {
@@ -51,7 +52,7 @@ enum ReaderInputMapping {
         case .two:
             .spread
         case .toggleAlignment:
-            .toggleAlignment
+            shiftPressed ? .shiftSpreadHere : .toggleAlignment
         }
     }
 

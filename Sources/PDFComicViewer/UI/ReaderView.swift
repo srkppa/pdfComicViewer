@@ -637,6 +637,8 @@ struct ReaderView: View {
             model.setDisplayMode(.spread)
         case .toggleAlignment:
             model.toggleAlignment()
+        case .shiftSpreadHere:
+            model.shiftSpreadHere()
         }
     }
 

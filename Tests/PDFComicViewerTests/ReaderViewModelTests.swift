@@ -136,6 +136,108 @@ final class ReaderViewModelTests: XCTestCase {
         XCTAssertEqual(model.focusRequestSequence, before)
     }
 
+    /// 起点ページに組む相手がいなくなったら、ずらしは押せない状態になる。
+    func testAlignmentToggleBecomesIneffectiveWhenNeighbourIsIsolated() async {
+        let session = DocumentSession.fixture(pageCount: 6)
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: session.url)
+        XCTAssertTrue(model.alignmentToggleIsEffective)
+
+        model.setPageOverride(.single, for: 1)
+
+        XCTAssertFalse(model.alignmentToggleIsEffective)
+    }
+
+    /// 文書を開いていなければ、ずらしようが無い。
+    func testAlignmentToggleIsIneffectiveWithNoOpenDocument() {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 2))),
+            progressStore: FakeProgressStore()
+        )
+
+        XCTAssertFalse(model.alignmentToggleIsEffective)
+    }
+
+    /// いま見ている見開きの組み合わせを1ページ分ずらす。
+    /// 見ているページ自身が単独になるのではなく、相方が入れ替わる。
+    func testShiftSpreadHereChangesThePartnerOfTheCurrentPage() async {
+        let session = DocumentSession.fixture(pageCount: 6)
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: session.url)
+        model.next()
+        model.next()
+        XCTAssertEqual(model.currentUnit, .pair(3, 4))
+        XCTAssertEqual(model.currentPhysicalPage, 3)
+
+        model.shiftSpreadHere()
+
+        XCTAssertEqual(model.currentUnit, .pair(2, 3))
+        XCTAssertEqual(model.currentPhysicalPage, 3)
+        XCTAssertEqual(model.displayUnits, [.single(0), .single(1), .pair(2, 3), .pair(4, 5)])
+    }
+
+    /// もう一度押せば元に戻る。指定を積み上げたままにしない。
+    func testShiftSpreadHereTwiceRestoresOriginalUnits() async {
+        let session = DocumentSession.fixture(pageCount: 6)
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: session.url)
+        model.next()
+        model.next()
+        let original = model.displayUnits
+
+        model.shiftSpreadHere()
+        model.shiftSpreadHere()
+
+        XCTAssertEqual(model.displayUnits, original)
+        XCTAssertEqual(model.currentUnit, .pair(3, 4))
+        XCTAssertTrue(model.preferences.pageOverrides.isEmpty)
+    }
+
+    /// 横長ページで区切られた先でも、その区間の中でずらせる。
+    /// これが `toggleAlignment()` では届かない範囲。
+    func testShiftSpreadHereWorksBeyondALandscapeBreak() async {
+        let session = DocumentSession.fixture(
+            pageCount: 7,
+            landscapeIndexes: [3]
+        )
+        let loader = FakePDFLoader(result: .ready(session))
+        let model = ReaderViewModel(loader: loader, progressStore: FakeProgressStore())
+        await model.open(url: session.url)
+        XCTAssertEqual(
+            model.displayUnits,
+            [.single(0), .pair(1, 2), .single(3), .pair(4, 5), .single(6)]
+        )
+        model.next()
+        model.next()
+        model.next()
+        XCTAssertEqual(model.currentUnit, .pair(4, 5))
+        model.next()
+        XCTAssertEqual(model.currentPhysicalPage, 6)
+
+        model.previous()
+        model.shiftSpreadHere()
+
+        XCTAssertEqual(
+            model.displayUnits,
+            [.single(0), .pair(1, 2), .single(3), .single(4), .pair(5, 6)]
+        )
+    }
+
+    /// 文書を開いていなければ何もしない。
+    func testShiftSpreadHereWithNoOpenDocumentIsNoOp() {
+        let model = ReaderViewModel(
+            loader: FakePDFLoader(result: .ready(.fixture(pageCount: 2))),
+            progressStore: FakeProgressStore()
+        )
+
+        model.shiftSpreadHere()
+
+        XCTAssertTrue(model.preferences.pageOverrides.isEmpty)
+    }
+
     func testChangingModeKeepsCurrentPhysicalPage() async {
         let session = DocumentSession.fixture(pageCount: 6)
         let loader = FakePDFLoader(result: .ready(session))
@@ -1170,16 +1272,18 @@ private actor FakeProgressStore: ReadingProgressStoring {
 private extension DocumentSession {
     static func fixture(
         pageCount: Int,
+        landscapeIndexes: Set<Int> = [],
         url: URL = URL(fileURLWithPath: "/tmp/comic.pdf"),
         metadata: FileMetadata = .fixture
     ) -> DocumentSession {
         DocumentSession(
             document: PDFDocument(),
             url: url,
-            pages: Array(
-                repeating: PageGeometry(width: 600, height: 900),
-                count: pageCount
-            ),
+            pages: (0..<pageCount).map { index in
+                landscapeIndexes.contains(index)
+                    ? PageGeometry(width: 1200, height: 800)
+                    : PageGeometry(width: 600, height: 900)
+            },
             metadata: metadata
         )
     }

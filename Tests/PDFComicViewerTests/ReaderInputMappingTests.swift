@@ -299,6 +299,24 @@ final class ReaderInputMappingTests: XCTestCase {
         )
     }
 
+    /// Shiftを添えたSは、文書全体のずらしではなく、いま見ているページから先を
+    /// ずらす操作に割り当てる。横長ページで組み合わせが途切れた先では、
+    /// 全体のずらし（S）が届かないため。
+    func testShiftedAlignmentKeyMapsToLocalShift() {
+        XCTAssertEqual(
+            ReaderInputMapping.action(
+                for: .toggleAlignment, shiftPressed: true, binding: .right
+            ),
+            .shiftSpreadHere
+        )
+        XCTAssertEqual(
+            ReaderInputMapping.action(
+                for: .toggleAlignment, shiftPressed: true, binding: .left
+            ),
+            .shiftSpreadHere
+        )
+    }
+
     func testRightBindingMapsLeftClickToNextAndRightClickToPrevious() {
         XCTAssertEqual(
             ReaderInputMapping.clickAction(

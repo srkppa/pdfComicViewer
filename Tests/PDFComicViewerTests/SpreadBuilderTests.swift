@@ -152,6 +152,89 @@ final class SpreadBuilderTests: XCTestCase {
         XCTAssertEqual(shifted, [.single(0), .pair(1, 2), .single(3)])
     }
 
+    /// 見開きが続いている区間の先頭ページを返す。ここに空きを入れると、
+    /// そこから先の組み合わせが1ページ分ずれる。
+    func testPairRunStartPageWalksBackThroughConsecutivePairs() {
+        let units: [DisplayUnit] = [.single(0), .pair(1, 2), .pair(3, 4), .single(5)]
+
+        XCTAssertEqual(SpreadBuilder.pairRunStartPage(units: units, unitIndex: 2), 1)
+        XCTAssertEqual(SpreadBuilder.pairRunStartPage(units: units, unitIndex: 1), 1)
+    }
+
+    /// 単独ページで区切られていれば、そこから先が別の区間になる。
+    func testPairRunStartPageStopsAtSinglePage() {
+        let units: [DisplayUnit] = [.single(0), .pair(1, 2), .single(3), .pair(4, 5)]
+
+        XCTAssertEqual(SpreadBuilder.pairRunStartPage(units: units, unitIndex: 3), 4)
+    }
+
+    /// いま見ているものが単独ページなら、それ自身が区間の先頭。
+    func testPairRunStartPageOfSinglePageIsItself() {
+        let units: [DisplayUnit] = [.single(0), .single(1), .pair(2, 3)]
+
+        XCTAssertEqual(SpreadBuilder.pairRunStartPage(units: units, unitIndex: 1), 1)
+    }
+
+    func testPairRunStartPageOfMissingUnitIsNil() {
+        XCTAssertNil(SpreadBuilder.pairRunStartPage(units: [], unitIndex: 0))
+        XCTAssertNil(SpreadBuilder.pairRunStartPage(units: [.single(0)], unitIndex: 3))
+    }
+
+    /// 起点ページに組む相手がいれば、ずらしは結果を変えられる。
+    func testAlignmentToggleChangesLayoutWhenAnchorHasPartner() {
+        XCTAssertTrue(
+            SpreadBuilder.alignmentToggleChangesLayout(
+                pages: Array(repeating: portrait, count: 5), overrides: [:]
+            )
+        )
+        // 表紙が横長でも、その先に対にできる2枚が続いていれば切り替えられる。
+        XCTAssertTrue(
+            SpreadBuilder.alignmentToggleChangesLayout(
+                pages: [landscape, portrait, portrait, portrait], overrides: [:]
+            )
+        )
+    }
+
+    /// 起点ページの相手が単独確定だと、単独をやめようにも組む先がない。
+    /// 切り替えても結果は変わらないので、操作させても意味が無い。
+    func testAlignmentToggleDoesNotChangeLayoutWhenAnchorHasNoPartner() {
+        XCTAssertFalse(
+            SpreadBuilder.alignmentToggleChangesLayout(
+                pages: Array(repeating: portrait, count: 6), overrides: [1: .single]
+            )
+        )
+        XCTAssertFalse(
+            SpreadBuilder.alignmentToggleChangesLayout(
+                pages: [portrait, landscape, portrait, portrait], overrides: [:]
+            )
+        )
+    }
+
+    /// 対にできるページが1枚も無ければ、そもそもずらす余地が無い。
+    func testAlignmentToggleDoesNotChangeLayoutWithoutAnyPairablePage() {
+        XCTAssertFalse(
+            SpreadBuilder.alignmentToggleChangesLayout(
+                pages: [landscape, landscape], overrides: [:]
+            )
+        )
+        XCTAssertFalse(SpreadBuilder.alignmentToggleChangesLayout(pages: [], overrides: [:]))
+    }
+
+    /// 最後の1枚しか対にできないときは、組む相手がいないので起点は無い。
+    func testLastLonePageIsNotTreatedAsAnchor() {
+        let pages = [landscape, landscape, portrait]
+
+        let cover = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .coverSingle, overrides: [:]
+        )
+        let shifted = SpreadBuilder.build(
+            pages: pages, mode: .spread, alignment: .shifted, overrides: [:]
+        )
+
+        XCTAssertEqual(cover, [.single(0), .single(1), .single(2)])
+        XCTAssertEqual(shifted, [.single(0), .single(1), .single(2)])
+    }
+
     /// 全ページが横長でずらす余地が無くても、落ちずに全部単独で返る。
     func testAllLandscapePagesStaySingleUnderBothAlignments() {
         let pages = [landscape, landscape, landscape]

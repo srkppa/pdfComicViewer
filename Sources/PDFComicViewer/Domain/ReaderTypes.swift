@@ -93,4 +93,9 @@ extension DisplayUnit {
     var anchorPage: Int {
         pageIndexes[0]
     }
+
+    var isPair: Bool {
+        if case .pair = self { return true }
+        return false
+    }
 }
