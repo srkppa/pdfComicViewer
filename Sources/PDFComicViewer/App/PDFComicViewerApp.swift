@@ -86,7 +86,7 @@ struct PDFComicViewerApp: App {
         }
         .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .commands {
-            ReaderCommands(model: model)
+            ReaderCommands(model: model, sidebarModel: sidebarModel)
         }
     }
 }
@@ -94,6 +94,7 @@ struct PDFComicViewerApp: App {
 @MainActor
 struct ReaderCommands: Commands {
     @ObservedObject var model: ReaderViewModel
+    @ObservedObject var sidebarModel: DirectorySidebarViewModel
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -133,6 +134,12 @@ struct ReaderCommands: Commands {
                 model.sidebarIsVisible.toggle()
             }
             .keyboardShortcut("b", modifiers: .command)
+
+            Button("一覧を再読み込み") {
+                sidebarModel.reload()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(!sidebarModel.canReload)
 
             Divider()
 

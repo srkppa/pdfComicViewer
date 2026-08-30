@@ -417,6 +417,35 @@ final class DirectorySidebarViewModelTests: XCTestCase {
         XCTAssertEqual(model.selectedNodeIDs, ["/tmp/c.pdf"])
     }
 
+    func testReloadIsNotAllowedBeforeAFolderIsChosen() {
+        let model = makeModel(scanner: FakeDirectoryScanner(result: .success([])))
+
+        XCTAssertFalse(model.canReload)
+    }
+
+    func testReloadIsAllowedOnceTheScanFinished() async throws {
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        let model = makeModel(scanner: scanner)
+
+        model.setRoot(URL(fileURLWithPath: "/tmp/comics"))
+        try await waitUntil { model.isLoading == false }
+
+        XCTAssertTrue(model.canReload)
+    }
+
+    /// スキャン中に押せてしまうと、同じ操作を連打しただけ走査が積み上がる。
+    func testReloadIsNotAllowedWhileScanning() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp/comics")
+        let scanner = FakeDirectoryScanner(result: .success([]))
+        await scanner.setDelay(.milliseconds(200), forRoot: rootURL.standardizedFileURL)
+        let model = makeModel(scanner: scanner)
+
+        model.setRoot(rootURL)
+
+        XCTAssertTrue(model.isLoading)
+        XCTAssertFalse(model.canReload)
+    }
+
     private func makeModel(
         scanner: any DirectoryScanning,
         progressStore: any ReadingProgressStoring = FakeSidebarProgressStore(),

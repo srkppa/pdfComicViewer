@@ -45,6 +45,7 @@ struct DirectorySidebarView: View {
             sortKeyButton
             sortDirectionButton
             modificationDateToggleButton
+            reloadButton
             Button(action: chooseFolder) {
                 Image(systemName: "folder")
                     .frame(width: 20, height: 20)
@@ -120,6 +121,24 @@ struct DirectorySidebarView: View {
         .accessibilityLabel(isAscending ? "昇順で並べ替え中" : "降順で並べ替え中")
         .help(helpText)
         .nativeToolTip(helpText)
+    }
+
+    /// フォルダの中身を読み直すボタン。
+    ///
+    /// アプリの外でファイルを増やしたり消したりしても一覧は自動では
+    /// 追いつかないため、手で読み直せる入口を用意している。
+    private var reloadButton: some View {
+        Button(action: model.reload) {
+            Image(systemName: "arrow.clockwise")
+                .frame(width: 20, height: 20)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(ReaderTheme.primaryText)
+        .contentShape(Rectangle())
+        .disabled(!model.canReload)
+        .accessibilityLabel("一覧を再読み込み")
+        .help("一覧を再読み込み（⌘R）")
+        .nativeToolTip("一覧を再読み込み（⌘R）")
     }
 
     /// 更新日の表示・非表示だけを独立して切り替えるボタン。

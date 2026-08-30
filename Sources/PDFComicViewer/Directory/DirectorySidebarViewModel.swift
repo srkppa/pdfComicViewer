@@ -37,6 +37,11 @@ final class DirectorySidebarViewModel: ObservableObject {
             .sorted(by: sortKey, direction: sortDirection)
     }
 
+    /// 手動の再読み込みを受け付けられるか。
+    /// フォルダ未選択のときは走査対象が無く、スキャン中は連打しただけ
+    /// 走査が積み上がるだけなので、どちらもボタンを無効にする。
+    var canReload: Bool { rootURL != nil && !isLoading }
+
     private let scanner: any DirectoryScanning
     private let progressStore: any ReadingProgressStoring
     private let trashService: any FileTrashing
