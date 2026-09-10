@@ -95,3 +95,7 @@ scripts/build-app.sh
 ```sh
 open build/PDFComicViewer.app
 ```
+
+## ライセンス
+
+このソフトウェアは[MITライセンス](LICENSE)のもとで公開されています。
